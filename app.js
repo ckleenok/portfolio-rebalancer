@@ -15,6 +15,8 @@
 
   const state = {
     contribution: 400,
+    planMonths: 6,
+    recentCurrentTotals: [],
     assets: TARGETS.map((asset) => ({ ...asset })),
     expectedReturns: {
       GLD: 0.04,
@@ -24,7 +26,6 @@
     },
   };
 
-  const PLAN_MONTHS = 6;
   const ASSET_COLORS = {
     GLD: "#d09b2c",
     SCHD: "#147c72",
@@ -84,7 +85,7 @@
     };
   }
 
-  function buildSixMonthPlan(assets, contribution, planMonths = PLAN_MONTHS) {
+  function buildSixMonthPlan(assets, contribution, planMonths = state.planMonths) {
     const currentTotal = assets.reduce((sum, asset) => sum + asset.current, 0);
     const finalTotal = currentTotal + contribution * planMonths;
     const finalTargets = assets.map((asset) => asset.target * finalTotal);
@@ -132,7 +133,7 @@
 
   function allocateBuyOnly(assets, contribution) {
     const currentTotal = assets.reduce((sum, asset) => sum + asset.current, 0);
-    const plan = buildSixMonthPlan(assets, contribution);
+    const plan = buildSixMonthPlan(assets, contribution, state.planMonths);
     const firstMonth = plan[0];
     return {
       currentTotal,
@@ -146,7 +147,7 @@
   }
 
   function simulateRebalancing(assets, contribution, options = {}) {
-    return buildSixMonthPlan(assets, contribution, options.planMonths ?? PLAN_MONTHS);
+    return buildSixMonthPlan(assets, contribution, options.planMonths ?? state.planMonths);
   }
 
   function splitCsvLine(line) {
@@ -174,6 +175,22 @@
     return cells;
   }
 
+  function extractRecentCurrentTotals(row) {
+    if (!Array.isArray(row)) return [];
+    const values = [];
+    for (let index = 14; index <= 20; index += 1) {
+      const parsed = parseMoney(row[index]);
+      if (parsed > 0) values.push(parsed);
+    }
+    return values.slice(-6);
+  }
+
+  function normalizeCell(value) {
+    return String(value || "")
+      .replace(/^\uFEFF/, "")
+      .trim();
+  }
+
   function parseLatestSheetRow(csvText) {
     const lines = String(csvText || "")
       .split(/\r?\n/)
@@ -181,33 +198,43 @@
       .filter((row) => row.length >= 5);
 
     const header = lines.find((row) => {
-      const tickers = ["Date", "SPY", "QQQ", "SCHD", "GLD"];
-      return tickers.every((ticker) => row.includes(ticker));
+      const normalized = row.map(normalizeCell);
+      const tickers = ["DATE", "SPY", "QQQ", "SCHD", "GLD"];
+      return tickers.every((ticker) => normalized.includes(ticker));
     });
-    const dateColumn = header?.indexOf("Date") ?? -1;
+    const normalizedHeader = header ? header.map(normalizeCell) : null;
+    const dateColumn = normalizedHeader?.indexOf("DATE") ?? -1;
     const columns =
       dateColumn >= 0
         ? {
             date: dateColumn,
-            SPY: header.indexOf("SPY", dateColumn),
-            QQQ: header.indexOf("QQQ", dateColumn),
-            SCHD: header.indexOf("SCHD", dateColumn),
-            GLD: header.indexOf("GLD", dateColumn),
+            SPY: normalizedHeader.indexOf("SPY", dateColumn),
+            QQQ: normalizedHeader.indexOf("QQQ", dateColumn),
+            SCHD: normalizedHeader.indexOf("SCHD", dateColumn),
+            GLD: normalizedHeader.indexOf("GLD", dateColumn),
           }
         : null;
 
     let latest = null;
+    let latestRawRow = null;
 
     if (columns && Object.values(columns).every((index) => index >= 0)) {
+      const totalsHistory = [];
       for (const row of lines) {
-        const date = row[columns.date];
+        const date = normalizeCell(row[columns.date]);
         const looksLikeDate = /^\d{2,4}\s*[.\/-]\s*\d{1,2}\s*[.\/-]?\s*\d{0,2}\.?$/.test(date);
         const values = [row[columns.SPY], row[columns.QQQ], row[columns.SCHD], row[columns.GLD]].map(parseMoney);
         if (looksLikeDate && values.every((value) => value > 0)) {
           latest = { date, SPY: values[0], QQQ: values[1], SCHD: values[2], GLD: values[3] };
+          latestRawRow = row;
+          totalsHistory.push(values.reduce((sum, value) => sum + value, 0));
         }
       }
-      return latest;
+      const recentCurrentTotals =
+        totalsHistory.length > 0
+          ? totalsHistory.slice(-6)
+          : findRecentTotalsFromSheet(lines);
+      return latest ? { ...latest, recentCurrentTotals } : null;
     }
 
     for (const row of lines) {
@@ -217,11 +244,27 @@
         const values = [spy, qqq, schd, gld].map(parseMoney);
         if (looksLikeDate && values.every((value) => value > 0)) {
           latest = { date, SPY: values[0], QQQ: values[1], SCHD: values[2], GLD: values[3] };
+          latestRawRow = row;
         }
       }
     }
 
-    return latest;
+    const recentCurrentTotals = findRecentTotalsFromSheet(lines);
+    return latest ? { ...latest, recentCurrentTotals } : null;
+  }
+
+  function findRecentTotalsFromSheet(lines) {
+    const totals = [];
+    for (const row of lines) {
+      const date = normalizeCell(row[16]);
+      const looksLikeDate = /^\d{2,4}\s*[.\/-]\s*\d{1,2}\s*[.\/-]?\s*\d{0,2}\.?$/.test(date);
+      if (!looksLikeDate) continue;
+      const values = [row[17], row[18], row[19], row[20]].map(parseMoney);
+      if (values.every((value) => value > 0)) {
+        totals.push(values.reduce((sum, value) => sum + value, 0));
+      }
+    }
+    return totals.slice(-6);
   }
 
   function renderInputs() {
@@ -279,15 +322,41 @@
     });
   }
 
+  function renderCurrentMetric(totalFromAssets) {
+    const metric = document.getElementById("currentMetric");
+    const history = document.getElementById("currentHistory");
+    if (!metric || !history) return;
+
+    const values =
+      state.recentCurrentTotals.length > 0 ? state.recentCurrentTotals.slice(-6) : [Math.max(0, totalFromAssets)];
+    metric.textContent = formatMoney(totalFromAssets);
+    const maxValue = Math.max(...values, 1);
+    history.innerHTML = "";
+    history.setAttribute("aria-label", "현재 평가금 최근 6개 값");
+
+    values.forEach((value, index) => {
+      const bar = document.createElement("div");
+      bar.className = `history-bar ${index === values.length - 1 ? "latest" : ""}`.trim();
+      bar.style.height = `${Math.max(14, Math.round((value / maxValue) * 100))}%`;
+      bar.title = formatMoney(value);
+      history.appendChild(bar);
+    });
+  }
+
   function render() {
     const result = allocateBuyOnly(state.assets, state.contribution);
     const maxTrade = Math.max(...result.rows.map((row) => Math.abs(row.trade)), 1);
 
     syncContributionInputs();
     renderHoldingsChart();
-    document.getElementById("currentMetric").textContent = formatMoney(result.currentTotal);
+    renderCurrentMetric(result.currentTotal);
     document.getElementById("futureMetric").textContent = formatMoney(result.futureTotal);
-    document.getElementById("shortMetric").textContent = `${PLAN_MONTHS}개월`;
+    document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
+
+    const planMonthsInput = document.getElementById("planMonthsInput");
+    if (planMonthsInput && document.activeElement !== planMonthsInput) {
+      planMonthsInput.value = String(state.planMonths);
+    }
 
     const buyList = document.getElementById("buyList");
     buyList.innerHTML = "";
@@ -361,7 +430,7 @@
 
     if (!summary || !list) return;
 
-    summary.textContent = `${PLAN_MONTHS}개월차에 목표 비중 도달`;
+    summary.textContent = `${state.planMonths}개월차에 목표 비중 도달`;
 
     list.innerHTML = "";
     months.forEach((month) => {
@@ -394,6 +463,7 @@
   function applyLatestRow(row, sourceLabel) {
     if (!row) return false;
     state.assets = state.assets.map((asset) => ({ ...asset, current: row[asset.ticker] ?? asset.current }));
+    state.recentCurrentTotals = Array.isArray(row.recentCurrentTotals) ? row.recentCurrentTotals.slice(-6) : [];
     renderInputs();
     bindAssetInputs();
     render();
@@ -413,16 +483,21 @@
   }
 
   function syncContributionInputs() {
-    ["contributionInput", "contributionMetricInput"].forEach((id) => {
-      const input = document.getElementById(id);
-      if (input && document.activeElement !== input) {
-        input.value = Math.round(state.contribution).toLocaleString("ko-KR");
-      }
-    });
+    const input = document.getElementById("contributionInput");
+    if (input && document.activeElement !== input) {
+      input.value = Math.round(state.contribution).toLocaleString("ko-KR");
+    }
   }
 
   function updateContribution(value) {
     state.contribution = parseMoney(value);
+    render();
+  }
+
+  function updatePlanMonths(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    state.planMonths = Math.max(1, Math.min(24, Math.round(parsed)));
     render();
   }
 
@@ -485,12 +560,11 @@
     render();
 
     document.getElementById("contributionInput").addEventListener("input", (event) => updateContribution(event.target.value));
-    document
-      .getElementById("contributionMetricInput")
-      .addEventListener("input", (event) => updateContribution(event.target.value));
+    document.getElementById("planMonthsInput").addEventListener("input", (event) => updatePlanMonths(event.target.value));
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);
+    loadSheet();
     loadHistoricalReturns();
   }
 

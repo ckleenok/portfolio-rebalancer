@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Rebalancer</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-14" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-19" />
   </head>
   <body>
     <main class="app-shell">
@@ -22,13 +22,14 @@
         <div class="metric">
           <span>신규 투자금</span>
           <label class="metric-input">
-            <input id="contributionMetricInput" type="text" inputmode="numeric" value="400" />
+            <input id="contributionInput" type="text" inputmode="numeric" value="400" />
             <span>만원</span>
           </label>
         </div>
         <div class="metric">
           <span>현재 평가금</span>
           <strong id="currentMetric">0만원</strong>
+          <div id="currentHistory" class="metric-history"></div>
         </div>
         <div class="metric">
           <span>매수 후 총액</span>
@@ -36,7 +37,8 @@
         </div>
         <div class="metric">
           <span>목표 도달</span>
-          <strong id="shortMetric">-</strong>
+          <strong id="shortMetric">6개월</strong>
+          <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="목표 도달 개월 수" />
         </div>
       </section>
 
@@ -46,14 +48,6 @@
             <h2>현재 보유금액</h2>
             <span id="sheetStatus">기본값: 2026-04-16 시트 히스토리</span>
           </div>
-
-          <label class="cash-input">
-            <span>이번 달 신규 투자금</span>
-            <div class="input-unit">
-              <input id="contributionInput" type="text" inputmode="numeric" value="400" />
-              <span>만원</span>
-            </div>
-          </label>
 
           <div class="holdings-chart" aria-label="현재 보유금액 비중">
             <div id="holdingsDonut" class="donut-chart">
@@ -115,6 +109,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260426-14"></script>
+    <script src="./app.js?v=20260426-19"></script>
   </body>
 </html>

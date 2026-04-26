@@ -51,7 +51,24 @@ const csv = `Date,SPY,QQQ,SCHD,GLD,Cash/Bond
 26.4.16,"5,918","6,431","3,289","7,730","1,420"
 3.0%,배당,배당성장,,,,,,,,,,,0,0.0%,,26.4.16,"5,918","6,431","3,289","7,730","1,420",23.87%,25.94%,13.26%,31.18%,5.72%`;
 const latest = parseLatestSheetRow(csv);
-assert.deepStrictEqual(latest, { date: "26.4.16", SPY: 5918, QQQ: 6431, SCHD: 3289, GLD: 7730 });
+assert.deepStrictEqual(latest, {
+  date: "26.4.16",
+  SPY: 5918,
+  QQQ: 6431,
+  SCHD: 3289,
+  GLD: 7730,
+  recentCurrentTotals: [23368],
+});
+
+const csvWithCurrentHistory = `,,,,,,,,,,,,,,,,Date,SPY,QQQ,SCHD,GLD,,,,,,
+,,,,,,,,,,,,,,,,25.12.22,"5,918","5,012","3,698","7,730",,,,,,
+,,,,,,,,,,,,,,,,26.1.10,"4,524","4,613","3,233","6,969",,,,,,
+,,,,,,,,,,,,,,,,26.1.27,"5,918","6,517","3,289","7,730",,,,,,
+,,,,,,,,,,,,,,,,26.2.10,"5,196","5,038","3,433","8,244",,,,,,
+,,,,,,,,,,,,,,,,26.3.12,"5,277","5,341","3,270","7,922",,,,,,
+,,,,,,,,,,,,,,,,26.4.16,"5,918","6,431","3,289","7,730",,,,,,`;
+const latestWithHistory = parseLatestSheetRow(csvWithCurrentHistory);
+assert.deepStrictEqual(latestWithHistory.recentCurrentTotals, [22358, 19339, 23454, 21911, 21810, 23368]);
 
 assert.strictEqual(parseMoney("₩29,762"), 29762);
 assert.strictEqual(parseMoney("400만원"), 400);

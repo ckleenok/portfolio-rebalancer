@@ -119,6 +119,39 @@ label > span {
   line-height: 1.2;
 }
 
+.metric-history {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px;
+  height: 44px;
+  margin-top: 8px;
+}
+
+.history-bar {
+  min-height: 14px;
+  width: 100%;
+  border-radius: 4px 4px 2px 2px;
+  background: #ccd5df;
+  cursor: default;
+  transition: transform 140ms ease;
+}
+
+.history-bar:hover {
+  transform: translateY(-1px);
+}
+
+.history-bar.latest {
+  background: var(--accent);
+}
+
+.month-slider {
+  width: 100%;
+  height: 30px;
+  margin-top: 6px;
+  accent-color: var(--accent);
+}
+
 .metric-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
