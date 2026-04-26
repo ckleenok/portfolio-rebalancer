@@ -226,6 +226,7 @@
 
   function renderInputs() {
     const container = document.getElementById("assetInputs");
+    if (!container) return;
     container.innerHTML = "";
 
     state.assets.forEach((asset) => {
