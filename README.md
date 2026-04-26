@@ -37,7 +37,7 @@ The app uses `PORT` from the hosting environment automatically.
 
 This project is ready for Vercel:
 
-- Static files are served from the project root.
+- Static files are served from `public/`.
 - `/api/sheet` and `/api/history` are implemented as Vercel Serverless Functions.
 
 Recommended flow:

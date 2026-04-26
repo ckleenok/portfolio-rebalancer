@@ -4,6 +4,7 @@ const path = require("path");
 
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
+const STATIC_ROOT = path.join(__dirname, "public");
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1HM_Jxv6zQzr-O5Spt06uq2HTyX1yFTVju2jzVjneL5M/export?format=csv&gid=172728277";
 const HISTORY_TICKERS = new Set(["GLD", "SCHD", "SPY", "QQQ"]);
@@ -23,8 +24,8 @@ function send(response, status, body, type = "text/plain; charset=utf-8") {
 function safeFilePath(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
   const target = cleanPath === "/" ? "/index.html" : cleanPath;
-  const resolved = path.resolve(ROOT, `.${target}`);
-  return resolved.startsWith(ROOT) ? resolved : null;
+  const resolved = path.resolve(STATIC_ROOT, `.${target}`);
+  return resolved.startsWith(STATIC_ROOT) ? resolved : null;
 }
 
 function parseYahooMonthlyHistory(payload) {
