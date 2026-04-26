@@ -1,0 +1,14 @@
+{
+  "name": "portfolio-rebalancer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portfolio rebalancing planner with Google Sheets import and historical CAGR estimates.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
