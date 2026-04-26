@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Rebalancer</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-12" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-13" />
   </head>
   <body>
     <main class="app-shell">
@@ -54,6 +54,13 @@
               <span>만원</span>
             </div>
           </label>
+
+          <div class="holdings-chart" aria-label="현재 보유금액 비중">
+            <div id="holdingsDonut" class="donut-chart">
+              <span id="holdingsDonutTotal">0만원</span>
+            </div>
+            <div id="holdingsLegend" class="holdings-legend"></div>
+          </div>
 
           <div id="assetInputs" class="asset-inputs"></div>
         </div>
@@ -109,6 +116,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260426-12"></script>
+    <script src="./app.js?v=20260426-13"></script>
   </body>
 </html>

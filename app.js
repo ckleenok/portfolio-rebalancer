@@ -25,6 +25,12 @@
   };
 
   const PLAN_MONTHS = 6;
+  const ASSET_COLORS = {
+    GLD: "#d09b2c",
+    SCHD: "#147c72",
+    SPY: "#2f6fbb",
+    QQQ: "#7b5d3a",
+  };
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -237,11 +243,47 @@
     });
   }
 
+  function renderHoldingsChart() {
+    const donut = document.getElementById("holdingsDonut");
+    const donutTotal = document.getElementById("holdingsDonutTotal");
+    const legend = document.getElementById("holdingsLegend");
+    if (!donut || !donutTotal || !legend) return;
+
+    const total = state.assets.reduce((sum, asset) => sum + asset.current, 0);
+    let cursor = 0;
+    const segments = state.assets.map((asset) => {
+      const percent = total > 0 ? asset.current / total : 0;
+      const start = cursor;
+      cursor += percent * 100;
+      const color = ASSET_COLORS[asset.ticker] || "#8190a3";
+      return `${color} ${start}% ${cursor}%`;
+    });
+
+    donut.style.background =
+      total > 0 ? `conic-gradient(${segments.join(", ")})` : "conic-gradient(#e8edf2 0% 100%)";
+    donutTotal.textContent = formatMoney(total);
+
+    legend.innerHTML = "";
+    state.assets.forEach((asset) => {
+      const percent = total > 0 ? asset.current / total : 0;
+      const row = document.createElement("div");
+      row.className = "legend-row";
+      row.innerHTML = `
+        <span class="legend-swatch" style="background: ${ASSET_COLORS[asset.ticker] || "#8190a3"}"></span>
+        <strong>${asset.ticker}</strong>
+        <span>${formatMoney(asset.current)}</span>
+        <em>${formatPercent(percent)}</em>
+      `;
+      legend.appendChild(row);
+    });
+  }
+
   function render() {
     const result = allocateBuyOnly(state.assets, state.contribution);
     const maxTrade = Math.max(...result.rows.map((row) => Math.abs(row.trade)), 1);
 
     syncContributionInputs();
+    renderHoldingsChart();
     document.getElementById("currentMetric").textContent = formatMoney(result.currentTotal);
     document.getElementById("futureMetric").textContent = formatMoney(result.futureTotal);
     document.getElementById("shortMetric").textContent = `${PLAN_MONTHS}개월`;
