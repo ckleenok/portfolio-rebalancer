@@ -88,7 +88,7 @@ h2 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -150,6 +150,90 @@ label > span {
   height: 30px;
   margin-top: 6px;
   accent-color: var(--accent);
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.target-input {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.target-input b {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.target-input input {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.target-total {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.target-total strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.target-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.target-save-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.target-save-status {
+  min-height: 16px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.target-cagr-mini {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.target-cagr-mini div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 6px;
+}
+
+.target-cagr-mini span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.target-cagr-mini strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
 }
 
 .metric-input {

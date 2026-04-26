@@ -18,6 +18,7 @@
     planMonths: 6,
     recentCurrentTotals: [],
     assets: TARGETS.map((asset) => ({ ...asset })),
+    draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
     expectedReturns: {
       GLD: 0.04,
       SCHD: 0.07,
@@ -32,6 +33,7 @@
     SPY: "#2f6fbb",
     QQQ: "#7b5d3a",
   };
+  const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -40,6 +42,15 @@
       .trim();
     const parsed = Number(cleaned);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function normalizeAssetsByTarget(assets) {
+    const totalTarget = assets.reduce((sum, asset) => sum + (Number.isFinite(asset.target) ? asset.target : 0), 0);
+    if (totalTarget <= 0) {
+      const equalWeight = 1 / Math.max(assets.length, 1);
+      return assets.map((asset) => ({ ...asset, target: equalWeight }));
+    }
+    return assets.map((asset) => ({ ...asset, target: asset.target / totalTarget }));
   }
 
   function formatMoney(value) {
@@ -344,11 +355,14 @@
   }
 
   function render() {
-    const result = allocateBuyOnly(state.assets, state.contribution);
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const result = allocateBuyOnly(normalizedAssets, state.contribution);
     const maxTrade = Math.max(...result.rows.map((row) => Math.abs(row.trade)), 1);
 
     syncContributionInputs();
     renderHoldingsChart();
+    syncTargetInputs();
+    renderTargetSummary();
     renderCurrentMetric(result.currentTotal);
     document.getElementById("futureMetric").textContent = formatMoney(result.futureTotal);
     document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
@@ -408,23 +422,31 @@
   }
 
   function renderCagr() {
-    const result = allocateBuyOnly(state.assets, state.contribution);
-    const currentCagr = calculateExpectedCagr(state.assets);
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const result = allocateBuyOnly(normalizedAssets, state.contribution);
+    const currentCagr = calculateExpectedCagr(normalizedAssets);
     const firstMonthAssets = result.rows.map((row) => ({
       ticker: row.ticker,
       target: row.target,
       current: row.after,
     }));
     const firstMonthCagr = calculateExpectedCagr(firstMonthAssets);
-    const targetCagr = calculateTargetExpectedCagr(state.assets);
+    const targetCagr = calculateTargetExpectedCagr(normalizedAssets);
 
     document.getElementById("currentCagr").textContent = formatPercent(currentCagr);
     document.getElementById("monthOneCagr").textContent = formatPercent(firstMonthCagr);
     document.getElementById("targetCagr").textContent = formatPercent(targetCagr);
+    const topCurrent = document.getElementById("topCurrentCagr");
+    const topMonthOne = document.getElementById("topMonthOneCagr");
+    const topTarget = document.getElementById("topTargetCagr");
+    if (topCurrent) topCurrent.textContent = formatPercent(currentCagr);
+    if (topMonthOne) topMonthOne.textContent = formatPercent(firstMonthCagr);
+    if (topTarget) topTarget.textContent = formatPercent(targetCagr);
   }
 
   function renderSimulation() {
-    const months = simulateRebalancing(state.assets, state.contribution);
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const months = simulateRebalancing(normalizedAssets, state.contribution);
     const summary = document.getElementById("simulationSummary");
     const list = document.getElementById("simulationList");
 
@@ -494,6 +516,77 @@
     render();
   }
 
+  function syncTargetInputs() {
+    let totalPercent = 0;
+    state.assets.forEach((asset) => {
+      const draftValue = Number(state.draftTargets[asset.ticker] ?? asset.target * 100);
+      totalPercent += Number.isFinite(draftValue) ? draftValue : 0;
+      const input = document.getElementById(`target-${asset.ticker}`);
+      if (input && document.activeElement !== input) {
+        input.value = String(draftValue.toFixed(1).replace(/\.0$/, ""));
+      }
+    });
+    const totalLabel = document.getElementById("targetTotalDisplay");
+    if (totalLabel) {
+      totalLabel.textContent = `${totalPercent.toFixed(1)}%`;
+    }
+  }
+
+  function renderTargetSummary() {
+    const summary = document.getElementById("allocationTargetSummary");
+    if (!summary) return;
+    const parts = state.assets.map((asset) => {
+      const percent = (asset.target * 100).toFixed(1).replace(/\.0$/, "");
+      return `${asset.ticker} ${percent}`;
+    });
+    summary.textContent = `목표 ${parts.join(" / ")}`;
+  }
+
+  function updateTargetPercent(ticker, value) {
+    const percent = parseMoney(value);
+    state.draftTargets[ticker] = Math.max(0, percent);
+    syncTargetInputs();
+  }
+
+  function setSaveStatus(message) {
+    const status = document.getElementById("targetSaveStatus");
+    if (!status) return;
+    status.textContent = message;
+  }
+
+  function saveTargets() {
+    state.assets = state.assets.map((asset) => {
+      const percent = Number(state.draftTargets[asset.ticker] ?? asset.target * 100);
+      return { ...asset, target: Math.max(0, percent / 100) };
+    });
+    try {
+      const payload = Object.fromEntries(state.assets.map((asset) => [asset.ticker, asset.target * 100]));
+      localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(payload));
+      setSaveStatus("저장됨");
+    } catch {
+      setSaveStatus("저장됨");
+    }
+    render();
+  }
+
+  function loadSavedTargets() {
+    try {
+      const raw = localStorage.getItem(TARGET_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      state.assets = state.assets.map((asset) => {
+        const percent = Number(parsed?.[asset.ticker]);
+        if (!Number.isFinite(percent)) return asset;
+        return { ...asset, target: Math.max(0, percent / 100) };
+      });
+      state.assets.forEach((asset) => {
+        state.draftTargets[asset.ticker] = asset.target * 100;
+      });
+    } catch {
+      // ignore parse/storage errors
+    }
+  }
+
   function updatePlanMonths(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -555,12 +648,23 @@
   }
 
   function init() {
+    loadSavedTargets();
     renderInputs();
     bindAssetInputs();
     render();
 
     document.getElementById("contributionInput").addEventListener("input", (event) => updateContribution(event.target.value));
     document.getElementById("planMonthsInput").addEventListener("input", (event) => updatePlanMonths(event.target.value));
+    ["GLD", "SCHD", "SPY", "QQQ"].forEach((ticker) => {
+      const input = document.getElementById(`target-${ticker}`);
+      if (input) {
+        input.addEventListener("input", (event) => updateTargetPercent(ticker, event.target.value));
+      }
+    });
+    const saveButton = document.getElementById("saveTargetsButton");
+    if (saveButton) {
+      saveButton.addEventListener("click", saveTargets);
+    }
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);

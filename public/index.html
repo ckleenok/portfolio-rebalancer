@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Rebalancer</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-19" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-21" />
   </head>
   <body>
     <main class="app-shell">
@@ -40,6 +40,25 @@
           <strong id="shortMetric">6개월</strong>
           <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="목표 도달 개월 수" />
         </div>
+        <div class="metric">
+          <span>목표 비중 (%)</span>
+          <div class="target-grid">
+            <label class="target-input"><b>GLD</b><input id="target-GLD" type="text" inputmode="decimal" value="41" /></label>
+            <label class="target-input"><b>SCHD</b><input id="target-SCHD" type="text" inputmode="decimal" value="7" /></label>
+            <label class="target-input"><b>SPY</b><input id="target-SPY" type="text" inputmode="decimal" value="22" /></label>
+            <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="30" /></label>
+          </div>
+          <div class="target-actions">
+            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
+            <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
+          </div>
+          <div id="targetSaveStatus" class="target-save-status"></div>
+          <div class="target-cagr-mini">
+            <div><span>현재</span><strong id="topCurrentCagr">0.0%</strong></div>
+            <div><span>1개월 후</span><strong id="topMonthOneCagr">0.0%</strong></div>
+            <div><span>목표</span><strong id="topTargetCagr">0.0%</strong></div>
+          </div>
+        </div>
       </section>
 
       <section class="workbench">
@@ -71,7 +90,7 @@
       <section class="panel">
         <div class="panel-title">
           <h2>비중 변화</h2>
-          <span>목표 GLD 41 / SCHD 7 / SPY 22 / QQQ 30</span>
+          <span id="allocationTargetSummary">목표 GLD 41 / SCHD 7 / SPY 22 / QQQ 30</span>
         </div>
         <div id="allocationRows" class="allocation-rows"></div>
       </section>
@@ -109,6 +128,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260426-19"></script>
+    <script src="./app.js?v=20260426-21"></script>
   </body>
 </html>
