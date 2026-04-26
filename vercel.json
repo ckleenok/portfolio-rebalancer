@@ -1,14 +1,5 @@
 {
-  "version": 2,
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store"
-        }
-      ]
-    }
+  "routes": [
+    { "src": "/", "dest": "/index.html" }
   ]
 }
