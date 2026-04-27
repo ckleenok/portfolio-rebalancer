@@ -43,6 +43,64 @@ input {
   margin-bottom: 22px;
 }
 
+.market-pulse {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.pulse-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 12px 16px;
+}
+
+.pulse-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pulse-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.pulse-card em {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.pulse-trend-svg {
+  display: block;
+  width: 100%;
+  height: 42px;
+  margin-top: 6px;
+}
+
+.pulse-axis {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.pulse-avg {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--accent);
@@ -88,7 +146,7 @@ h2 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -117,6 +175,22 @@ label > span {
   margin-top: 8px;
   font-size: 22px;
   line-height: 1.2;
+}
+
+.metric-subtotal {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.metric-subtotal span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-subtotal strong {
+  margin-top: 4px;
+  font-size: 20px;
 }
 
 .metric-history {
@@ -358,15 +432,34 @@ input:focus {
   content: "";
 }
 
-.donut-chart span {
+.donut-chart > #holdingsDonutTotal {
   position: relative;
-  z-index: 1;
-  width: 76px;
+  z-index: 3;
+  width: 72px;
   color: var(--ink);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 800;
   line-height: 1.2;
   text-align: center;
+}
+
+.donut-slice-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.donut-slice-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: #111;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  width: auto;
+  text-shadow: none;
+  white-space: nowrap;
 }
 
 .holdings-legend {
@@ -376,7 +469,7 @@ input:focus {
 
 .legend-row {
   display: grid;
-  grid-template-columns: 14px 52px minmax(80px, 1fr) 58px;
+  grid-template-columns: 14px 52px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 28px;
@@ -399,8 +492,11 @@ input:focus {
   font-style: normal;
 }
 
-.legend-row em {
+.legend-value {
   text-align: right;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .asset-card {
@@ -647,6 +743,10 @@ input:focus {
 @media (max-width: 860px) {
   .summary-grid,
   .cagr-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-pulse {
     grid-template-columns: 1fr;
   }
 

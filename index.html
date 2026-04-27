@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Rebalancer</title>
-    <link rel="stylesheet" href="./styles.css?v=20260427-02" />
+    <link rel="stylesheet" href="./styles.css?v=20260427-05" />
   </head>
   <body>
     <main class="app-shell">
@@ -18,6 +18,33 @@
         </button>
       </section>
 
+      <section class="market-pulse" aria-label="시장 지표">
+        <div class="pulse-card">
+          <span>Fear &amp; Greed</span>
+          <strong id="fearGreedValue">--</strong>
+          <em id="fearGreedLabel">Loading...</em>
+          <svg id="fearGreedTrend" class="pulse-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none"></svg>
+          <div class="pulse-axis">
+            <span id="fearGreedDateStart">--</span>
+            <span id="fearGreedDateMid">--</span>
+            <span id="fearGreedDateEnd">--</span>
+          </div>
+          <small id="fearGreedAvg" class="pulse-avg">60포인트 평균 --</small>
+        </div>
+        <div class="pulse-card">
+          <span>Buffett Indicator</span>
+          <strong id="buffettValue">--</strong>
+          <em id="buffettLabel">Loading...</em>
+          <svg id="buffettTrend" class="pulse-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none"></svg>
+          <div class="pulse-axis">
+            <span id="buffettDateStart">--</span>
+            <span id="buffettDateMid">--</span>
+            <span id="buffettDateEnd">--</span>
+          </div>
+          <small id="buffettAvg" class="pulse-avg">60포인트 평균 --</small>
+        </div>
+      </section>
+
       <section class="summary-grid" aria-label="요약">
         <div class="metric">
           <span>신규 투자금</span>
@@ -29,6 +56,10 @@
         <div class="metric">
           <span>현재 평가금</span>
           <strong id="currentMetric">0만원</strong>
+          <div class="metric-subtotal">
+            <span>매수 후 총액</span>
+            <strong id="futureMetric">0만원</strong>
+          </div>
           <div id="currentHistory" class="metric-history"></div>
         </div>
         <div class="metric">
@@ -136,6 +167,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260427-02"></script>
+    <script src="./app.js?v=20260427-05"></script>
   </body>
 </html>

@@ -12,6 +12,8 @@
       : "https://docs.google.com/spreadsheets/d/1HM_Jxv6zQzr-O5Spt06uq2HTyX1yFTVju2jzVjneL5M/export?format=csv&gid=172728277";
   const HISTORY_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/history" : null;
+  const MARKET_PULSE_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/market-pulse" : null;
 
   const state = {
     contribution: 400,
@@ -60,6 +62,63 @@
 
   function formatPercent(value) {
     return `${(value * 100).toFixed(1)}%`;
+  }
+
+  function formatPulsePercent(value) {
+    if (!Number.isFinite(value)) return "--";
+    return `${value.toFixed(1)}%`;
+  }
+
+  function formatShortDate(dateText) {
+    const parsed = new Date(`${String(dateText || "").slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return "--";
+    return `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`;
+  }
+
+  function buildMiniTrendModel(points, width = 280, height = 42, pad = 3) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+    const values = points.map((point) => Number(point?.value)).filter((value) => Number.isFinite(value));
+    if (values.length < 2) return null;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const coords = values.map((value, index) => {
+      const x = pad + (index / Math.max(values.length - 1, 1)) * (width - pad * 2);
+      const y = pad + ((max - value) / span) * (height - pad * 2);
+      return { x, y, value };
+    });
+    const avgY = pad + ((max - avg) / span) * (height - pad * 2);
+    return { coords, avg, avgY, width, pad };
+  }
+
+  function renderPulseTrend(svgId, avgId, points, color, axisIds) {
+    const svg = document.getElementById(svgId);
+    const avgLabel = document.getElementById(avgId);
+    const startLabel = axisIds?.start ? document.getElementById(axisIds.start) : null;
+    const midLabel = axisIds?.mid ? document.getElementById(axisIds.mid) : null;
+    const endLabel = axisIds?.end ? document.getElementById(axisIds.end) : null;
+    if (!svg || !avgLabel) return;
+    const model = buildMiniTrendModel(points);
+    if (!model) {
+      svg.innerHTML = "";
+      avgLabel.textContent = "60-day avg --";
+      if (startLabel) startLabel.textContent = "--";
+      if (midLabel) midLabel.textContent = "--";
+      if (endLabel) endLabel.textContent = "--";
+      return;
+    }
+    const { coords, avg, avgY, width, pad } = model;
+    const pathData = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    const avgLine = `<line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${(width - pad).toFixed(1)}" y2="${avgY.toFixed(1)}" stroke="#8a95a6" stroke-width="1.1" stroke-dasharray="4 3"></line>`;
+    svg.innerHTML = `${avgLine}<path d="${pathData}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"></path>`;
+    avgLabel.textContent = `60-day avg ${avg.toFixed(2)}`;
+    if (Array.isArray(points) && points.length > 0) {
+      const midIndex = Math.floor((points.length - 1) / 2);
+      if (startLabel) startLabel.textContent = formatShortDate(points[0]?.date);
+      if (midLabel) midLabel.textContent = formatShortDate(points[midIndex]?.date);
+      if (endLabel) endLabel.textContent = formatShortDate(points[points.length - 1]?.date);
+    }
   }
 
   function calculateExpectedCagr(assets, expectedReturns = state.expectedReturns) {
@@ -317,19 +376,46 @@
 
     donut.style.background =
       total > 0 ? `conic-gradient(${segments.join(", ")})` : "conic-gradient(#e8edf2 0% 100%)";
-    donutTotal.textContent = formatMoney(total);
+    donutTotal.textContent = `${Math.round(total).toLocaleString("ko-KR")}`;
+
+    let sliceLabels = donut.querySelector(".donut-slice-labels");
+    if (!sliceLabels) {
+      sliceLabels = document.createElement("div");
+      sliceLabels.className = "donut-slice-labels";
+      donut.appendChild(sliceLabels);
+    }
+    sliceLabels.innerHTML = "";
+
+    if (total > 0) {
+      const center = 75;
+      const radius = 43;
+      let angleCursor = -90;
+      state.assets.forEach((asset) => {
+        const percent = total > 0 ? asset.current / total : 0;
+        const sweep = percent * 360;
+        const midAngle = angleCursor + sweep / 2;
+        const radians = (midAngle * Math.PI) / 180;
+        const x = center + Math.cos(radians) * radius;
+        const y = center + Math.sin(radians) * radius;
+        const label = document.createElement("span");
+        label.className = "donut-slice-label";
+        label.textContent = `${(percent * 100).toFixed(1)}%`;
+        label.style.left = `${x}px`;
+        label.style.top = `${y}px`;
+        sliceLabels.appendChild(label);
+        angleCursor += sweep;
+      });
+    }
 
     legend.innerHTML = "";
     state.assets.forEach((asset) => {
-      const percent = total > 0 ? asset.current / total : 0;
       const row = document.createElement("div");
       row.className = "legend-row";
       row.innerHTML = `
-        <span class="legend-swatch" style="background: ${ASSET_COLORS[asset.ticker] || "#8190a3"}"></span>
-        <strong>${asset.ticker}</strong>
-        <span>${formatMoney(asset.current)}</span>
-        <em>${formatPercent(percent)}</em>
-      `;
+          <span class="legend-swatch" style="background: ${ASSET_COLORS[asset.ticker] || "#8190a3"}"></span>
+          <strong>${asset.ticker}</strong>
+          <span class="legend-value">${formatMoney(asset.current)}</span>
+        `;
       legend.appendChild(row);
     });
   }
@@ -390,7 +476,7 @@
           <span class="ticker">${row.ticker}</span>
           <div>
             <div class="bar-track"><div class="bar-fill ${isSell ? "sell-fill" : ""}" style="width: ${(Math.abs(row.trade) / maxTrade) * 100}%"></div></div>
-            <div class="buy-note">${isSell ? "축소 후" : "매수 후"} ${formatPercent(row.afterWeight)} / 목표 ${formatPercent(row.target)}</div>
+            <div class="buy-note">${isSell ? "축소 후" : "매수 후"} ${formatPercent(row.afterWeight)}<br>목표 ${formatPercent(row.target)}</div>
           </div>
           <strong>${isSell ? "-" : "+"}${formatMoney(Math.abs(row.trade))}</strong>
         `;
@@ -600,6 +686,15 @@
     render();
   }
 
+  function normalizeSummaryLayout() {
+    const futureMetrics = Array.from(document.querySelectorAll("#futureMetric"));
+    if (futureMetrics.length <= 1) return;
+    futureMetrics.slice(1).forEach((node) => {
+      const metricCard = node.closest(".metric");
+      if (metricCard) metricCard.remove();
+    });
+  }
+
   function buildTrendCoordinates(points, width = 280, height = 44, pad = 4) {
     if (!Array.isArray(points) || points.length === 0) return null;
     const values = points.map((point) => Number(point.close)).filter((value) => Number.isFinite(value));
@@ -697,6 +792,57 @@
     renderTrendPanel();
   }
 
+  async function loadMarketPulse() {
+    if (!MARKET_PULSE_URL) return;
+    const fearValue = document.getElementById("fearGreedValue");
+    const fearLabel = document.getElementById("fearGreedLabel");
+    const buffettValue = document.getElementById("buffettValue");
+    const buffettLabel = document.getElementById("buffettLabel");
+    if (!fearValue || !fearLabel || !buffettValue || !buffettLabel) return;
+
+    fearValue.textContent = "--";
+    buffettValue.textContent = "--";
+    fearLabel.textContent = "Loading...";
+    buffettLabel.textContent = "Loading...";
+
+    try {
+      const response = await fetch(MARKET_PULSE_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const fg = payload?.fearGreed || {};
+      const bi = payload?.buffett || {};
+
+      fearValue.textContent = Number.isFinite(Number(fg.value)) ? Math.round(Number(fg.value)).toString() : "--";
+      fearLabel.textContent = fg.label || "N/A";
+      renderPulseTrend("fearGreedTrend", "fearGreedAvg", fg.trend60, "#147c72", {
+        start: "fearGreedDateStart",
+        mid: "fearGreedDateMid",
+        end: "fearGreedDateEnd",
+      });
+
+      buffettValue.textContent = formatPulsePercent(Number(bi.value));
+      buffettLabel.textContent = bi.label || "N/A";
+      renderPulseTrend("buffettTrend", "buffettAvg", bi.trend60, "#2f6fbb", {
+        start: "buffettDateStart",
+        mid: "buffettDateMid",
+        end: "buffettDateEnd",
+      });
+    } catch {
+      fearLabel.textContent = "Unavailable";
+      buffettLabel.textContent = "Unavailable";
+      renderPulseTrend("fearGreedTrend", "fearGreedAvg", [], "#147c72", {
+        start: "fearGreedDateStart",
+        mid: "fearGreedDateMid",
+        end: "fearGreedDateEnd",
+      });
+      renderPulseTrend("buffettTrend", "buffettAvg", [], "#2f6fbb", {
+        start: "buffettDateStart",
+        mid: "buffettDateMid",
+        end: "buffettDateEnd",
+      });
+    }
+  }
+
   async function loadSheet() {
     const status = document.getElementById("sheetStatus");
     status.textContent = "시트 불러오는 중...";
@@ -751,6 +897,7 @@
   }
 
   function init() {
+    normalizeSummaryLayout();
     loadSavedTargets();
     renderInputs();
     bindAssetInputs();
@@ -774,6 +921,7 @@
     loadSheet();
     loadHistoricalReturns();
     loadTrend30();
+    loadMarketPulse();
   }
 
   if (typeof module !== "undefined") {
