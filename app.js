@@ -19,6 +19,7 @@
     recentCurrentTotals: [],
     assets: TARGETS.map((asset) => ({ ...asset })),
     draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
+    trend30: {},
     expectedReturns: {
       GLD: 0.04,
       SCHD: 0.07,
@@ -366,6 +367,10 @@
     renderCurrentMetric(result.currentTotal);
     document.getElementById("futureMetric").textContent = formatMoney(result.futureTotal);
     document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
+    const tradeHorizonText = document.getElementById("tradeHorizonText");
+    if (tradeHorizonText) {
+      tradeHorizonText.textContent = `${state.planMonths}개월에 걸쳐 점진 조정`;
+    }
 
     const planMonthsInput = document.getElementById("planMonthsInput");
     if (planMonthsInput && document.activeElement !== planMonthsInput) {
@@ -419,6 +424,7 @@
 
     renderSimulation();
     renderCagr();
+    renderTrendPanel();
   }
 
   function renderCagr() {
@@ -594,6 +600,103 @@
     render();
   }
 
+  function buildTrendCoordinates(points, width = 280, height = 44, pad = 4) {
+    if (!Array.isArray(points) || points.length === 0) return null;
+    const values = points.map((point) => Number(point.close)).filter((value) => Number.isFinite(value));
+    if (values.length === 0) return null;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const coords = values.map((value, index) => {
+      const x = pad + (index / Math.max(values.length - 1, 1)) * (width - pad * 2);
+      const y = pad + ((max - value) / span) * (height - pad * 2);
+      return { x, y, value };
+    });
+    return { coords, min, max, span, avg, width, height, pad };
+  }
+
+  function renderTrendPanel() {
+    const grid = document.getElementById("trendGrid");
+    const status = document.getElementById("trendStatus");
+    if (!grid || !status) return;
+
+    const rows = state.assets
+      .map((asset) => ({ ticker: asset.ticker, trend: state.trend30[asset.ticker] }))
+      .filter((item) => item.trend && Array.isArray(item.trend.points) && item.trend.points.length > 1);
+
+    if (rows.length === 0) {
+      grid.innerHTML = "";
+      status.textContent = "추세 데이터 없음";
+      return;
+    }
+
+    status.textContent = "최근 30거래일";
+    grid.innerHTML = "";
+    rows.forEach(({ ticker, trend }) => {
+      const change = Number(trend.change || 0);
+      const direction = change >= 0 ? "up" : "down";
+      const model = buildTrendCoordinates(trend.points);
+      if (!model) return;
+      const { coords, max, span, avg, width, height, pad } = model;
+      const path = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+      const circles = coords
+        .map(
+          (point) =>
+            `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" fill="transparent"><title>${Number(
+              point.value,
+            ).toFixed(2)}</title></circle>`,
+        )
+        .join("");
+      const avgY = pad + ((max - avg) / span) * (height - pad * 2);
+      const avgLine = `<line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${(width - pad).toFixed(1)}" y2="${avgY.toFixed(
+        1,
+      )}" stroke="#8a95a6" stroke-width="1.2" stroke-dasharray="4 3"><title>30일 평균 ${avg.toFixed(2)}</title></line>`;
+      const last = trend.points[trend.points.length - 1];
+      const card = document.createElement("div");
+      card.className = "trend-card";
+      card.innerHTML = `
+        <div class="trend-head">
+          <strong>${ticker}</strong>
+          <span class="trend-change ${direction}">${change >= 0 ? "+" : ""}${(change * 100).toFixed(1)}%</span>
+        </div>
+        <svg class="trend-svg" viewBox="0 0 280 44" preserveAspectRatio="none" role="img" aria-label="${ticker} 최근 30일 추세">
+          ${avgLine}
+          <path d="${path}" fill="none" stroke="${ASSET_COLORS[ticker] || "#8190a3"}" stroke-width="2" stroke-linecap="round"></path>
+          ${circles}
+        </svg>
+        <div class="trend-footer">${trend.startDate} ~ ${trend.endDate} / 최근 ${Number(last.close).toFixed(
+          2,
+        )} / 30일 평균 ${avg.toFixed(2)}</div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  async function loadTrend30() {
+    if (!HISTORY_URL) return;
+    const status = document.getElementById("trendStatus");
+    if (status) status.textContent = "데이터 불러오는 중...";
+    const next = {};
+    const failures = [];
+
+    for (const asset of state.assets) {
+      try {
+        const response = await fetch(`${HISTORY_URL}?ticker=${encodeURIComponent(asset.ticker)}&mode=trend30`);
+        if (!response.ok) throw new Error(`${asset.ticker} HTTP ${response.status}`);
+        next[asset.ticker] = await response.json();
+      } catch (error) {
+        failures.push(`${asset.ticker}: ${error.message}`);
+      }
+    }
+
+    state.trend30 = { ...state.trend30, ...next };
+    if (status) {
+      status.textContent = failures.length === 0 ? "최근 30거래일" : `일부 실패: ${failures.join(", ")}`;
+    }
+    renderTrendPanel();
+  }
+
   async function loadSheet() {
     const status = document.getElementById("sheetStatus");
     status.textContent = "시트 불러오는 중...";
@@ -670,6 +773,7 @@
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);
     loadSheet();
     loadHistoricalReturns();
+    loadTrend30();
   }
 
   if (typeof module !== "undefined") {

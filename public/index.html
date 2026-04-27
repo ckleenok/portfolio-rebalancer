@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Rebalancer</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-21" />
+    <link rel="stylesheet" href="./styles.css?v=20260427-02" />
   </head>
   <body>
     <main class="app-shell">
@@ -80,10 +80,18 @@
         <div class="panel result-panel">
           <div class="panel-title">
             <h2>이번 달 거래</h2>
-            <span>6개월에 걸쳐 점진 조정</span>
+            <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
           </div>
           <div id="buyList" class="buy-list"></div>
           <div id="warningBox" class="warning" hidden></div>
+        </div>
+
+        <div class="panel trend-panel">
+          <div class="panel-title">
+            <h2>최근 30일 추세</h2>
+            <span id="trendStatus">데이터 불러오는 중...</span>
+          </div>
+          <div id="trendGrid" class="trend-grid"></div>
         </div>
       </section>
 
@@ -128,6 +136,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260426-21"></script>
+    <script src="./app.js?v=20260427-02"></script>
   </body>
 </html>
