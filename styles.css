@@ -209,7 +209,7 @@ label > span {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   align-items: end;
   gap: 6px;
-  height: 44px;
+  height: 60px;
   margin-top: 8px;
 }
 
@@ -220,12 +220,17 @@ label > span {
 }
 
 .history-bar {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
   min-height: 14px;
   width: 100%;
   border-radius: 4px 4px 2px 2px;
   background: #ccd5df;
   cursor: default;
   transition: transform 140ms ease;
+  overflow: hidden;
 }
 
 .history-bar:hover {
@@ -234,6 +239,18 @@ label > span {
 
 .history-bar.latest {
   background: var(--accent);
+}
+
+.history-delta {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  color: #1f2b3d;
+  margin-bottom: 2px;
+}
+
+.history-bar.latest .history-delta {
+  color: #ffffff;
 }
 
 .month-slider {
@@ -602,11 +619,12 @@ input:focus {
   position: absolute;
   transform: translate(-50%, -50%);
   color: #111;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   line-height: 1;
   width: auto;
   text-shadow: none;
+  -webkit-text-stroke: 0;
   white-space: nowrap;
 }
 

@@ -65,6 +65,17 @@
     return `${(value * 100).toFixed(1)}%`;
   }
 
+  function getContrastTextColor(hex) {
+    const normalized = String(hex || "").replace("#", "");
+    if (normalized.length !== 6) return "#111111";
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+    if ([r, g, b].some((v) => Number.isNaN(v))) return "#111111";
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.55 ? "#ffffff" : "#111111";
+  }
+
   function formatPulsePercent(value) {
     if (!Number.isFinite(value)) return "--";
     return `${value.toFixed(1)}%`;
@@ -389,18 +400,20 @@
 
     if (total > 0) {
       const center = 75;
-      const radius = 43;
+      const baseRadius = 58;
       let angleCursor = -90;
       state.assets.forEach((asset) => {
         const percent = total > 0 ? asset.current / total : 0;
         const sweep = percent * 360;
         const midAngle = angleCursor + sweep / 2;
         const radians = (midAngle * Math.PI) / 180;
+        const radius = percent < 0.18 ? baseRadius + 3 : baseRadius;
         const x = center + Math.cos(radians) * radius;
         const y = center + Math.sin(radians) * radius;
         const label = document.createElement("span");
         label.className = "donut-slice-label";
         label.textContent = `${(percent * 100).toFixed(1)}%`;
+        label.style.color = "#111111";
         label.style.left = `${x}px`;
         label.style.top = `${y}px`;
         sliceLabels.appendChild(label);
@@ -437,7 +450,15 @@
       const bar = document.createElement("div");
       bar.className = `history-bar ${index === values.length - 1 ? "latest" : ""}`.trim();
       bar.style.height = `${Math.max(14, Math.round((value / maxValue) * 100))}%`;
-      bar.title = formatMoney(value);
+      const prev = index > 0 ? values[index - 1] : null;
+      const delta = Number.isFinite(prev) ? value - prev : null;
+      const deltaLabel =
+        delta === null ? "-" : `${delta >= 0 ? "+" : "-"}${Math.abs(Math.round(delta)).toLocaleString("ko-KR")}`;
+      bar.title = `${formatMoney(value)} / 직전 대비 ${deltaLabel}만원`;
+      const label = document.createElement("span");
+      label.className = "history-delta";
+      label.textContent = deltaLabel;
+      bar.appendChild(label);
       history.appendChild(bar);
     });
   }
