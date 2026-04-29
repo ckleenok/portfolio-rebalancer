@@ -555,6 +555,7 @@
     if (topCurrentSharpe) topCurrentSharpe.textContent = currentRisk.sharpe.toFixed(3);
     if (topTargetMdd) topTargetMdd.textContent = `${(targetRisk.mdd * 100).toFixed(1)}%`;
     if (topTargetSharpe) topTargetSharpe.textContent = targetRisk.sharpe.toFixed(3);
+    renderCorrelationGrid();
   }
 
   function renderSimulation() {
@@ -849,6 +850,88 @@
     const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
 
     return { mdd, sharpe };
+  }
+
+  function pearsonCorrelation(valuesA, valuesB) {
+    if (!Array.isArray(valuesA) || !Array.isArray(valuesB)) return null;
+    const length = Math.min(valuesA.length, valuesB.length);
+    if (length < 2) return null;
+    const a = valuesA.slice(0, length);
+    const b = valuesB.slice(0, length);
+    const meanA = a.reduce((sum, v) => sum + v, 0) / length;
+    const meanB = b.reduce((sum, v) => sum + v, 0) / length;
+    let cov = 0;
+    let varA = 0;
+    let varB = 0;
+    for (let index = 0; index < length; index += 1) {
+      const da = a[index] - meanA;
+      const db = b[index] - meanB;
+      cov += da * db;
+      varA += da * da;
+      varB += db * db;
+    }
+    if (varA <= 0 || varB <= 0) return null;
+    return cov / Math.sqrt(varA * varB);
+  }
+
+  function computePairCorrelations() {
+    const tickers = ["GLD", "SCHD", "SPY", "QQQ"];
+    const returnsByTicker = {};
+
+    for (const ticker of tickers) {
+      const points = state.trend30[ticker]?.points;
+      if (!Array.isArray(points) || points.length < 2) return [];
+      const byDate = new Map(
+        points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+      returnsByTicker[ticker] = byDate;
+    }
+
+    const baseDates = state.trend30[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => returnsByTicker[ticker].has(date)));
+    if (commonDates.length < 3) return [];
+
+    const dailyReturns = {};
+    for (const ticker of tickers) {
+      const closes = commonDates.map((date) => returnsByTicker[ticker].get(date));
+      const rets = [];
+      for (let index = 1; index < closes.length; index += 1) {
+        rets.push(closes[index] / closes[index - 1] - 1);
+      }
+      dailyReturns[ticker] = rets;
+    }
+
+    const pairs = [
+      ["GLD", "SCHD"],
+      ["GLD", "SPY"],
+      ["GLD", "QQQ"],
+      ["SCHD", "SPY"],
+      ["SCHD", "QQQ"],
+      ["SPY", "QQQ"],
+    ];
+
+    return pairs.map(([left, right]) => ({
+      pair: `${left}-${right}`,
+      value: pearsonCorrelation(dailyReturns[left], dailyReturns[right]),
+    }));
+  }
+
+  function renderCorrelationGrid() {
+    const container = document.getElementById("corrGrid");
+    if (!container) return;
+    const rows = computePairCorrelations();
+    if (rows.length === 0) {
+      container.innerHTML = '<div class="corr-item"><span>Correlation</span><strong>Loading...</strong></div>';
+      return;
+    }
+    container.innerHTML = rows
+      .map((row) => {
+        const value = Number.isFinite(row.value) ? row.value.toFixed(3) : "N/A";
+        return `<div class="corr-item"><span>${row.pair}</span><strong>${value}</strong></div>`;
+      })
+      .join("");
   }
 
   function renderCagrTrend(svgId, metaId, points, color) {

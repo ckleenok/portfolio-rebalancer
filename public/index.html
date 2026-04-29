@@ -109,21 +109,25 @@
             <div><span>Target MDD</span><strong id="topTargetMdd">0.0%</strong></div>
             <div><span>Target Sharpe</span><strong id="topTargetSharpe">0.000</strong></div>
           </div>
-        </div>
+</div>
       </section>
 
       <section class="workbench">
-        <div class="panel inputs-panel">
+                <div class="panel inputs-panel">
           <div class="panel-title">
-            <h2>현재 보유금액</h2>
-            <span id="sheetStatus">기본값: 2026-04-16 시트 히스토리</span>
+            <h2>Current Holdings</h2>
+            <span id="sheetStatus">Latest from sheet</span>
           </div>
 
-          <div class="holdings-chart" aria-label="현재 보유금액 비중">
+          <div class="holdings-chart" aria-label="Current holdings allocation">
             <div id="holdingsDonut" class="donut-chart">
-              <span id="holdingsDonutTotal">0만원</span>
+              <span id="holdingsDonutTotal">0</span>
             </div>
             <div id="holdingsLegend" class="holdings-legend"></div>
+          </div>
+          <div class="corr-section">
+            <span class="corr-title">Correlation Coefficient</span>
+            <div class="corr-grid" id="corrGrid" aria-label="Pairwise correlations"></div>
           </div>
 
         </div>

@@ -371,6 +371,44 @@ label > span {
   font-size: 14px;
 }
 
+.corr-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.corr-section {
+  margin-top: 8px;
+}
+
+.corr-title {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.corr-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 6px;
+}
+
+.corr-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.corr-item strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
 .metric-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
