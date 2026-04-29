@@ -38,6 +38,8 @@
     QQQ: "#7b5d3a",
   };
   const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
+  const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
+  const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -729,10 +731,27 @@
     }
   }
 
+  function loadSavedPlanMonths() {
+    try {
+      const raw = localStorage.getItem(PLAN_MONTHS_STORAGE_KEY);
+      if (raw == null) return;
+      const parsed = Math.round(Number(raw));
+      if (!Number.isFinite(parsed)) return;
+      state.planMonths = Math.max(1, Math.min(24, parsed));
+    } catch {
+      // ignore parse/storage errors
+    }
+  }
+
   function updatePlanMonths(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     state.planMonths = Math.max(1, Math.min(24, Math.round(parsed)));
+    try {
+      localStorage.setItem(PLAN_MONTHS_STORAGE_KEY, String(state.planMonths));
+    } catch {
+      // ignore storage errors
+    }
     render();
   }
 
@@ -870,6 +889,39 @@
     const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
 
     return { mdd, sharpe };
+  }
+
+  function applyCalendarVisibility(visible) {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("calendar-hidden", !visible);
+    const button = document.getElementById("toggleCalendarButton");
+    if (button) {
+      button.textContent = visible ? "◀" : "▶";
+      button.title = visible ? "Hide Calendar" : "Show Calendar";
+      button.setAttribute("aria-label", visible ? "Hide Calendar" : "Show Calendar");
+    }
+  }
+
+  function loadSavedCalendarVisibility() {
+    let visible = true;
+    try {
+      const raw = localStorage.getItem(CALENDAR_VISIBLE_STORAGE_KEY);
+      if (raw === "0") visible = false;
+      if (raw === "1") visible = true;
+    } catch {
+      // ignore storage errors
+    }
+    applyCalendarVisibility(visible);
+  }
+
+  function toggleCalendarVisibility() {
+    const nextVisible = document.body.classList.contains("calendar-hidden");
+    applyCalendarVisibility(nextVisible);
+    try {
+      localStorage.setItem(CALENDAR_VISIBLE_STORAGE_KEY, nextVisible ? "1" : "0");
+    } catch {
+      // ignore storage errors
+    }
   }
 
   function pearsonCorrelation(valuesA, valuesB) {
@@ -1258,6 +1310,7 @@
 
   function init() {
     normalizeSummaryLayout();
+    loadSavedPlanMonths();
     loadSavedTargets();
     renderInputs();
     bindAssetInputs();
@@ -1279,6 +1332,11 @@
       const button = document.getElementById(`window${days}Button`);
       if (button) button.addEventListener("click", () => setTrendWindow(days));
     });
+    const toggleCalendarButton = document.getElementById("toggleCalendarButton");
+    if (toggleCalendarButton) {
+      toggleCalendarButton.addEventListener("click", toggleCalendarVisibility);
+    }
+    loadSavedCalendarVisibility();
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);

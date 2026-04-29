@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Portfolio Rebalancer</title>
+    <title>Portfolio Manager</title>
     <link rel="stylesheet" href="./styles.css?v=20260427-05" />
   </head>
   <body>
@@ -12,12 +12,16 @@
         <div class="app-main">
       <section class="topbar">
         <div>
-          <p class="eyebrow">6-month rebalance plan</p>
-          <h1>포트폴리오 리밸런싱</h1>
+<h1>Portfolio Manager</h1>
         </div>
-        <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet에서 최신 행 불러오기">
+        <div class="topbar-actions">
+          <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet에서 최신 행 불러오기">
           시트 불러오기
         </button>
+          <button id="toggleCalendarButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide Calendar" aria-label="Hide Calendar">
+            ◀
+          </button>
+        </div>
       </section>
 
       <section class="market-pulse" aria-label="시장 지표">

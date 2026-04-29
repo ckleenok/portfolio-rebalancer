@@ -52,6 +52,10 @@ input {
   z-index: 20;
 }
 
+body.calendar-hidden .calendar-rail {
+  display: none;
+}
+
 .calendar-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -75,6 +79,20 @@ input {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 22px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-toggle-btn {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .market-pulse {
