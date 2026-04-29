@@ -35,6 +35,40 @@ input {
   padding: 34px 0 44px;
 }
 
+.app-layout {
+  display: block;
+}
+
+.app-main {
+  min-width: 0;
+}
+
+.calendar-rail {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 320px;
+  max-height: calc(100vh - 24px);
+  z-index: 20;
+}
+
+.calendar-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+  height: 100%;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+}
+
+.calendar-embed {
+  width: 100%;
+  height: calc(100vh - 100px);
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -920,6 +954,10 @@ input:focus {
 }
 
 @media (max-width: 860px) {
+  .calendar-rail {
+    display: none;
+  }
+
   .summary-grid,
   .cagr-grid {
     grid-template-columns: 1fr;

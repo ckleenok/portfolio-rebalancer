@@ -8,6 +8,8 @@
   </head>
   <body>
     <main class="app-shell">
+      <div class="app-layout">
+        <div class="app-main">
       <section class="topbar">
         <div>
           <p class="eyebrow">6-month rebalance plan</p>
@@ -188,6 +190,22 @@
         </div>
         <div id="simulationList" class="simulation-list"></div>
       </section>
+        </div>
+        <aside class="calendar-rail" aria-label="Google Calendar">
+          <div class="calendar-card">
+            <div class="panel-title">
+              <h2>Google Calendar</h2>
+            </div>
+            <iframe
+              class="calendar-embed"
+              src="https://calendar.google.com/calendar/embed?src=ckleenok%40gmail.com&ctz=Asia%2FHo_Chi_Minh&showTitle=0&showTabs=0&showPrint=0&showCalendars=0&showTz=0&mode=AGENDA"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              title="Google Calendar"
+            ></iframe>
+          </div>
+        </aside>
+      </div>
     </main>
 
     <script src="./app.js?v=20260427-05"></script>
