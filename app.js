@@ -895,11 +895,11 @@
 
     if (rows.length === 0) {
       grid.innerHTML = "";
-      status.textContent = "추세 데이터 없음";
+      status.textContent = "No trend data";
       return;
     }
 
-    status.textContent = "최근 30거래일";
+    status.textContent = `Recent ${state.trendWindow} trading days`;
     grid.innerHTML = "";
     rows.forEach(({ ticker, trend }) => {
       const change = Number(trend.change || 0);
@@ -911,15 +911,11 @@
       const circles = coords
         .map(
           (point) =>
-            `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" fill="transparent"><title>${Number(
-              point.value,
-            ).toFixed(2)}</title></circle>`,
+            `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" fill="transparent"><title>${Number(point.value).toFixed(2)}</title></circle>`,
         )
         .join("");
       const avgY = pad + ((max - avg) / span) * (height - pad * 2);
-      const avgLine = `<line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${(width - pad).toFixed(1)}" y2="${avgY.toFixed(
-        1,
-      )}" stroke="#8a95a6" stroke-width="1.2" stroke-dasharray="4 3"><title>30일 평균 ${avg.toFixed(2)}</title></line>`;
+      const avgLine = `<line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${(width - pad).toFixed(1)}" y2="${avgY.toFixed(1)}" stroke="#8a95a6" stroke-width="1.2" stroke-dasharray="4 3"><title>${state.trendWindow}d avg ${avg.toFixed(2)}</title></line>`;
       const last = trend.points[trend.points.length - 1];
       const card = document.createElement("div");
       card.className = "trend-card";
@@ -928,14 +924,12 @@
           <strong>${ticker}</strong>
           <span class="trend-change ${direction}">${change >= 0 ? "+" : ""}${(change * 100).toFixed(1)}%</span>
         </div>
-        <svg class="trend-svg" viewBox="0 0 280 44" preserveAspectRatio="none" role="img" aria-label="${ticker} 최근 30일 추세">
+        <svg class="trend-svg" viewBox="0 0 280 44" preserveAspectRatio="none" role="img" aria-label="${ticker} recent ${state.trendWindow}-day trend">
           ${avgLine}
           <path d="${path}" fill="none" stroke="${ASSET_COLORS[ticker] || "#8190a3"}" stroke-width="2" stroke-linecap="round"></path>
           ${circles}
         </svg>
-        <div class="trend-footer">${trend.startDate} ~ ${trend.endDate} / 최근 ${Number(last.close).toFixed(
-          2,
-        )} / 30일 평균 ${avg.toFixed(2)}</div>
+        <div class="trend-footer">${trend.startDate} ~ ${trend.endDate} / Last ${Number(last.close).toFixed(2)} / ${state.trendWindow}d avg ${avg.toFixed(2)}</div>
       `;
       grid.appendChild(card);
     });
@@ -960,7 +954,7 @@
 
     state.trend30 = { ...state.trend30, ...next };
     if (status) {
-      status.textContent = failures.length === 0 ? "최근 30거래일" : `일부 실패: ${failures.join(", ")}`;
+      status.textContent = failures.length === 0 ? `Recent ${state.trendWindow} trading days` : `Partial failure: ${failures.join(", ")}`;
     }
     renderTrendPanel();
     renderCagr();
