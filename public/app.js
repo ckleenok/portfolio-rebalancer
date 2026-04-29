@@ -534,6 +534,14 @@
     if (topCurrent) topCurrent.textContent = formatPercent(currentCagr);
     if (topMonthOne) topMonthOne.textContent = formatPercent(firstMonthCagr);
     if (topTarget) topTarget.textContent = formatPercent(targetCagr);
+
+    const currentTotal = normalizedAssets.reduce((sum, asset) => sum + asset.current, 0);
+    const currentWeights = Object.fromEntries(
+      normalizedAssets.map((asset) => [asset.ticker, currentTotal > 0 ? asset.current / currentTotal : 0]),
+    );
+    const targetWeights = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset.target]));
+    renderCagrTrend("currentCagrTrend", "currentCagrTrendMeta", buildPortfolioTrendSeries(currentWeights), "#147c72");
+    renderCagrTrend("targetCagrTrend", "targetCagrTrendMeta", buildPortfolioTrendSeries(targetWeights), "#2f6fbb");
   }
 
   function renderSimulation() {
@@ -711,6 +719,90 @@
     return { coords, min, max, span, avg, width, height, pad };
   }
 
+  function buildPortfolioTrendSeries(weightsByTicker) {
+    const tickers = Object.keys(weightsByTicker || {}).filter((ticker) => Number(weightsByTicker[ticker]) > 0);
+    if (tickers.length === 0) return [];
+    if (tickers.some((ticker) => !Array.isArray(state.trend30[ticker]?.points) || state.trend30[ticker].points.length < 2)) {
+      return [];
+    }
+
+    const baseByTicker = {};
+    const mapByTicker = {};
+    tickers.forEach((ticker) => {
+      const points = state.trend30[ticker].points;
+      baseByTicker[ticker] = Number(points[0].close);
+      mapByTicker[ticker] = new Map(
+        points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+
+    const baseDates = state.trend30[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => mapByTicker[ticker].has(date)));
+    if (commonDates.length < 2) return [];
+
+    const indexedSeries = commonDates.map((date) =>
+      tickers.map((ticker) => {
+        const base = baseByTicker[ticker];
+        const close = mapByTicker[ticker].get(date);
+        const ratio = Number.isFinite(base) && base > 0 && Number.isFinite(close) ? close / base : 0;
+        return { ticker, ratio };
+      }),
+    );
+
+    return indexedSeries.map((rows, dateIndex) => {
+      const date = commonDates[dateIndex];
+      const weightedValues = rows.map((row) => ({
+        ticker: row.ticker,
+        value: (Number(weightsByTicker[row.ticker]) || 0) * row.ratio,
+      }));
+      const totalValue = weightedValues.reduce((sum, row) => sum + row.value, 0);
+      const liveWeights = Object.fromEntries(
+        weightedValues.map((row) => [row.ticker, totalValue > 0 ? row.value / totalValue : 0]),
+      );
+      const cagr = tickers.reduce((sum, ticker) => {
+        const w = Number(liveWeights[ticker]) || 0;
+        const r = Number(state.expectedReturns[ticker]) || 0;
+        return sum + w * r;
+      }, 0);
+      return { date, close: cagr * 100 };
+    });
+  }
+
+  function renderCagrTrend(svgId, metaId, points, color) {
+    const svg = document.getElementById(svgId);
+    const meta = document.getElementById(metaId);
+    if (!svg || !meta) return;
+    const model = buildTrendCoordinates(points, 280, 42, 3);
+    if (!model) {
+      svg.innerHTML = "";
+      meta.textContent = "최근 30일 추세 데이터 없음";
+      return;
+    }
+    const { coords, max, span, avg, width, height, pad } = model;
+    const path = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    const circles = coords
+      .map((point, index) => {
+        const raw = points[index];
+        return `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4.2" fill="transparent"><title>${String(
+          raw?.date || "",
+        )} / CAGR ${Number(raw?.close).toFixed(2)}%</title></circle>`;
+      })
+      .join("");
+    const avgY = pad + ((max - avg) / span) * (height - pad * 2);
+    const avgLine = `<line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${(width - pad).toFixed(1)}" y2="${avgY.toFixed(
+      1,
+    )}" stroke="#8a95a6" stroke-width="1.1" stroke-dasharray="4 3"></line>`;
+    svg.innerHTML = `${avgLine}<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"></path>${circles}`;
+    const first = Number(points[0].close);
+    const last = Number(points[points.length - 1].close);
+    const change = Number.isFinite(first) && Number.isFinite(last) ? last - first : 0;
+    meta.textContent = `${formatShortDate(points[0].date)} ~ ${formatShortDate(points[points.length - 1].date)} / ${
+      change >= 0 ? "+" : ""
+    }${change.toFixed(2)}%p`;
+  }
+
   function renderTrendPanel() {
     const grid = document.getElementById("trendGrid");
     const status = document.getElementById("trendStatus");
@@ -790,6 +882,7 @@
       status.textContent = failures.length === 0 ? "최근 30거래일" : `일부 실패: ${failures.join(", ")}`;
     }
     renderTrendPanel();
+    renderCagr();
   }
 
   async function loadMarketPulse() {
