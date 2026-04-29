@@ -74,12 +74,19 @@
         <div class="metric">
           <span>현재 평가금</span>
           <strong id="currentMetric">0만원</strong>
-          <div class="metric-subtotal">
-            <span>매수 후 총액</span>
-            <strong id="futureMetric">0만원</strong>
-          </div>
+          <div class="metric-history-title">지난 6개월 현재 평가금</div>
           <div id="currentHistory" class="metric-history"></div>
-        </div>
+          <div class="panel-title">
+            <h2>Current Holdings</h2>
+            <span id="sheetStatus">Latest from sheet</span>
+          </div>
+          <div class="holdings-chart" aria-label="Current holdings allocation">
+            <div id="holdingsDonut" class="donut-chart">
+              <span id="holdingsDonutTotal">0</span>
+            </div>
+            <div id="holdingsLegend" class="holdings-legend"></div>
+          </div>
+</div>
         <div class="metric">
           <span>목표 비중 (%)</span>
           <div class="target-grid">
@@ -113,26 +120,14 @@
       </section>
 
       <section class="workbench">
-                <div class="panel inputs-panel">
+        <div class="panel inputs-panel">
           <div class="panel-title">
-            <h2>Current Holdings</h2>
-            <span id="sheetStatus">Latest from sheet</span>
+            <h2>Correlation Coefficient</h2>
           </div>
-
-          <div class="holdings-chart" aria-label="Current holdings allocation">
-            <div id="holdingsDonut" class="donut-chart">
-              <span id="holdingsDonutTotal">0</span>
-            </div>
-            <div id="holdingsLegend" class="holdings-legend"></div>
-          </div>
-          <div class="corr-section">
-            <span class="corr-title">Correlation Coefficient</span>
-            <div class="corr-grid" id="corrGrid" aria-label="Pairwise correlations"></div>
-          </div>
-
+          <div class="corr-grid" id="corrGrid" aria-label="Pairwise correlations"></div>
         </div>
 
-        <div class="panel result-panel">
+<div class="panel result-panel">
           <div class="panel-title">
             <h2>이번 달 거래</h2>
             <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>

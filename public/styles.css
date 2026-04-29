@@ -213,6 +213,12 @@ label > span {
   margin-top: 8px;
 }
 
+.metric-history-title {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .history-bar {
   min-height: 14px;
   width: 100%;
@@ -374,6 +380,7 @@ label > span {
 .corr-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin-top: 6px;
 }
@@ -390,10 +397,13 @@ label > span {
 }
 
 .corr-item {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fbfcfd;
   padding: 6px;
+  min-height: 0;
 }
 
 .corr-item span {
@@ -408,6 +418,45 @@ label > span {
   color: var(--ink);
   font-size: 13px;
 }
+
+.corr-trend-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 28px;
+  max-height: 46px;
+  margin-top: 4px;
+  flex: 1;
+}
+
+.corr-guide {
+  stroke: #c6cfdb;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.corr-guide-mid {
+  stroke: #8a95a6;
+  stroke-dasharray: none;
+}
+
+.corr-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.inputs-panel:has(#corrGrid) {
+  display: flex;
+  flex-direction: column;
+}
+
+.inputs-panel:has(#corrGrid) .corr-grid {
+  flex: 1;
+  min-height: 0;
+}
+
 
 .metric-input {
   display: grid;

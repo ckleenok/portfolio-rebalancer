@@ -452,7 +452,6 @@
     syncTargetInputs();
     renderTargetSummary();
     renderCurrentMetric(result.currentTotal);
-    document.getElementById("futureMetric").textContent = formatMoney(result.futureTotal);
     document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
     const tradeHorizonText = document.getElementById("tradeHorizonText");
     if (tradeHorizonText) {
@@ -912,10 +911,65 @@
       ["SPY", "QQQ"],
     ];
 
-    return pairs.map(([left, right]) => ({
-      pair: `${left}-${right}`,
-      value: pearsonCorrelation(dailyReturns[left], dailyReturns[right]),
-    }));
+    const returnDates = commonDates.slice(1);
+    return pairs.map(([left, right]) => {
+      const leftReturns = dailyReturns[left];
+      const rightReturns = dailyReturns[right];
+      const corrWindow = Math.max(2, Math.min(state.trendWindow, leftReturns.length, rightReturns.length));
+      const periodLeft = leftReturns.slice(-corrWindow);
+      const periodRight = rightReturns.slice(-corrWindow);
+      const periodCorr = pearsonCorrelation(periodLeft, periodRight);
+      const rollingWindow = Math.max(6, Math.min(Math.round(corrWindow / 2), leftReturns.length, rightReturns.length));
+      const series = [];
+      for (let index = rollingWindow - 1; index < leftReturns.length; index += 1) {
+        const leftSlice = leftReturns.slice(index - rollingWindow + 1, index + 1);
+        const rightSlice = rightReturns.slice(index - rollingWindow + 1, index + 1);
+        const corr = pearsonCorrelation(leftSlice, rightSlice);
+        if (!Number.isFinite(corr)) continue;
+        series.push({ date: returnDates[index], value: corr });
+      }
+      const first = series[0]?.value;
+      const last = series[series.length - 1]?.value;
+      const delta = Number.isFinite(first) && Number.isFinite(last) ? last - first : null;
+      const latest = Number.isFinite(periodCorr) ? periodCorr : Number.isFinite(last) ? last : pearsonCorrelation(leftReturns, rightReturns);
+      return {
+        pair: `${left}-${right}`,
+        value: latest,
+        series,
+        delta,
+        corrWindow,
+        rollingWindow,
+      };
+    });
+  }
+
+  function buildCorrelationTrendSvg(series, width = 120, height = 44, pad = 4) {
+    if (!Array.isArray(series) || series.length < 2) return "";
+    const yFromCorr = (corr) => pad + ((1 - corr) / 2) * (height - pad * 2);
+    const coords = series.map((point, index) => {
+      const x = pad + (index / Math.max(series.length - 1, 1)) * (width - pad * 2);
+      const clamped = Math.max(-1, Math.min(1, Number(point.value)));
+      const y = yFromCorr(clamped);
+      return { x, y, value: clamped, date: point.date };
+    });
+    const path = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    const x1 = pad.toFixed(1);
+    const x2 = (width - pad).toFixed(1);
+    const topY = yFromCorr(1).toFixed(1);
+    const midY = yFromCorr(0).toFixed(1);
+    const bottomY = yFromCorr(-1).toFixed(1);
+    const guides = `<line x1="${x1}" y1="${topY}" x2="${x2}" y2="${topY}" class="corr-guide"></line>
+      <line x1="${x1}" y1="${midY}" x2="${x2}" y2="${midY}" class="corr-guide corr-guide-mid"></line>
+      <line x1="${x1}" y1="${bottomY}" x2="${x2}" y2="${bottomY}" class="corr-guide"></line>`;
+    const circles = coords
+      .map(
+        (point) =>
+          `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" fill="transparent"><title>${String(
+            point.date || "",
+          )} / corr ${point.value.toFixed(3)}</title></circle>`,
+      )
+      .join("");
+    return `${guides}<path d="${path}" fill="none" stroke="#2f6fbb" stroke-width="1.8" stroke-linecap="round"></path>${circles}`;
   }
 
   function renderCorrelationGrid() {
@@ -929,7 +983,14 @@
     container.innerHTML = rows
       .map((row) => {
         const value = Number.isFinite(row.value) ? row.value.toFixed(3) : "N/A";
-        return `<div class="corr-item"><span>${row.pair}</span><strong>${value}</strong></div>`;
+        const trendSvg = buildCorrelationTrendSvg(row.series);
+        const trendDelta = Number.isFinite(row.delta) ? `${row.delta >= 0 ? "+" : ""}${row.delta.toFixed(3)}` : "N/A";
+        return `<div class="corr-item">
+          <span>${row.pair}</span>
+          <strong>${value}</strong>
+          <svg class="corr-trend-svg" viewBox="0 0 120 44" preserveAspectRatio="none">${trendSvg}</svg>
+          <small class="corr-meta">${row.corrWindow}D corr / ${row.rollingWindow}D trend ${trendDelta}</small>
+        </div>`;
       })
       .join("");
   }
