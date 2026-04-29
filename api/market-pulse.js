@@ -173,9 +173,55 @@ async function fetchBuffettIndicator() {
   };
 }
 
+function classifyVix(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  if (value < 15) return "Low Volatility";
+  if (value < 25) return "Normal Volatility";
+  if (value < 35) return "Elevated Volatility";
+  return "High Volatility";
+}
+
+async function fetchVixIndicator() {
+  const urls = [
+    "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?range=6mo&interval=1d&events=history&includeAdjustedClose=true",
+    "https://query2.finance.yahoo.com/v8/finance/chart/%5EVIX?range=6mo&interval=1d&events=history&includeAdjustedClose=true",
+  ];
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0 portfolio-rebalancer",
+          accept: "application/json",
+        },
+      });
+      if (!response.ok) throw new Error(`VIX returned ${response.status}`);
+      const payload = await response.json();
+      const daily = parseYahooDailyHistory(payload).slice(-60);
+      if (daily.length < 2) throw new Error("Not enough VIX history");
+      const value = Number(daily[daily.length - 1].close);
+      const trend60 = daily.map((point) => ({ date: point.date, value: Number(point.close) }));
+      const avg60 = trend60.reduce((sum, point) => sum + point.value, 0) / trend60.length;
+      return {
+        value,
+        label: classifyVix(value),
+        trend60,
+        avg60,
+        updatedAt: daily[daily.length - 1].date,
+        source: "Yahoo Finance ^VIX",
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("VIX unavailable");
+}
+
 async function fetchMarketPulse() {
-  const [fearGreed, buffett] = await Promise.all([fetchFearGreedIndex(), fetchBuffettIndicator()]);
-  return { fearGreed, buffett };
+  const [fearGreed, buffett, vix] = await Promise.all([fetchFearGreedIndex(), fetchBuffettIndicator(), fetchVixIndicator()]);
+  return { fearGreed, buffett, vix };
 }
 
 module.exports = async function handler(request, response) {

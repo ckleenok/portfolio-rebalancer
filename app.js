@@ -18,6 +18,7 @@
   const state = {
     contribution: 400,
     planMonths: 6,
+    trendWindow: 30,
     recentCurrentTotals: [],
     assets: TARGETS.map((asset) => ({ ...asset })),
     draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
@@ -511,6 +512,7 @@
     renderSimulation();
     renderCagr();
     renderTrendPanel();
+    renderWindowToggle();
   }
 
   function renderCagr() {
@@ -542,6 +544,17 @@
     const targetWeights = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset.target]));
     renderCagrTrend("currentCagrTrend", "currentCagrTrendMeta", buildPortfolioTrendSeries(currentWeights), "#147c72");
     renderCagrTrend("targetCagrTrend", "targetCagrTrendMeta", buildPortfolioTrendSeries(targetWeights), "#2f6fbb");
+
+    const currentRisk = calculateRiskMetrics(buildPortfolioIndexSeries(currentWeights));
+    const targetRisk = calculateRiskMetrics(buildPortfolioIndexSeries(targetWeights));
+    const topCurrentMdd = document.getElementById("topCurrentMdd");
+    const topCurrentSharpe = document.getElementById("topCurrentSharpe");
+    const topTargetMdd = document.getElementById("topTargetMdd");
+    const topTargetSharpe = document.getElementById("topTargetSharpe");
+    if (topCurrentMdd) topCurrentMdd.textContent = `${(currentRisk.mdd * 100).toFixed(1)}%`;
+    if (topCurrentSharpe) topCurrentSharpe.textContent = currentRisk.sharpe.toFixed(3);
+    if (topTargetMdd) topTargetMdd.textContent = `${(targetRisk.mdd * 100).toFixed(1)}%`;
+    if (topTargetSharpe) topTargetSharpe.textContent = targetRisk.sharpe.toFixed(3);
   }
 
   function renderSimulation() {
@@ -640,6 +653,14 @@
       return `${asset.ticker} ${percent}`;
     });
     summary.textContent = `목표 ${parts.join(" / ")}`;
+  }
+
+  function renderWindowToggle() {
+    [30, 90, 180].forEach((days) => {
+      const button = document.getElementById(`window${days}Button`);
+      if (!button) return;
+      button.classList.toggle("active", state.trendWindow === days);
+    });
   }
 
   function updateTargetPercent(ticker, value) {
@@ -770,6 +791,66 @@
     });
   }
 
+  function buildPortfolioIndexSeries(weightsByTicker) {
+    const tickers = Object.keys(weightsByTicker || {}).filter((ticker) => Number(weightsByTicker[ticker]) > 0);
+    if (tickers.length === 0) return [];
+    if (tickers.some((ticker) => !Array.isArray(state.trend30[ticker]?.points) || state.trend30[ticker].points.length < 2)) {
+      return [];
+    }
+
+    const baseByTicker = {};
+    const mapByTicker = {};
+    tickers.forEach((ticker) => {
+      const points = state.trend30[ticker].points;
+      baseByTicker[ticker] = Number(points[0].close);
+      mapByTicker[ticker] = new Map(
+        points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+
+    const baseDates = state.trend30[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => mapByTicker[ticker].has(date)));
+    if (commonDates.length < 2) return [];
+
+    return commonDates.map((date) => {
+      const value = tickers.reduce((sum, ticker) => {
+        const base = baseByTicker[ticker];
+        const close = mapByTicker[ticker].get(date);
+        const ratio = Number.isFinite(base) && base > 0 && Number.isFinite(close) ? close / base : 0;
+        return sum + (Number(weightsByTicker[ticker]) || 0) * ratio;
+      }, 0);
+      return { date, close: value * 100 };
+    });
+  }
+
+  function calculateRiskMetrics(series) {
+    if (!Array.isArray(series) || series.length < 2) return { mdd: 0, sharpe: 0 };
+    const values = series.map((point) => Number(point.close)).filter((v) => Number.isFinite(v) && v > 0);
+    if (values.length < 2) return { mdd: 0, sharpe: 0 };
+
+    let peak = values[0];
+    let mdd = 0;
+    for (const value of values) {
+      peak = Math.max(peak, value);
+      const drawdown = peak > 0 ? value / peak - 1 : 0;
+      mdd = Math.min(mdd, drawdown);
+    }
+
+    const dailyReturns = [];
+    for (let index = 1; index < values.length; index += 1) {
+      dailyReturns.push(values[index] / values[index - 1] - 1);
+    }
+    const mean = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+    const variance =
+      dailyReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / Math.max(1, dailyReturns.length - 1);
+    const std = Math.sqrt(variance);
+    const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
+
+    return { mdd, sharpe };
+  }
+
   function renderCagrTrend(svgId, metaId, points, color) {
     const svg = document.getElementById(svgId);
     const meta = document.getElementById(metaId);
@@ -860,7 +941,7 @@
     });
   }
 
-  async function loadTrend30() {
+  async function loadTrendWindow() {
     if (!HISTORY_URL) return;
     const status = document.getElementById("trendStatus");
     if (status) status.textContent = "데이터 불러오는 중...";
@@ -869,7 +950,7 @@
 
     for (const asset of state.assets) {
       try {
-        const response = await fetch(`${HISTORY_URL}?ticker=${encodeURIComponent(asset.ticker)}&mode=trend30`);
+        const response = await fetch(`${HISTORY_URL}?ticker=${encodeURIComponent(asset.ticker)}&mode=trend&days=${state.trendWindow}`);
         if (!response.ok) throw new Error(`${asset.ticker} HTTP ${response.status}`);
         next[asset.ticker] = await response.json();
       } catch (error) {
@@ -885,18 +966,30 @@
     renderCagr();
   }
 
+  function setTrendWindow(days) {
+    const next = Number(days);
+    if (!Number.isFinite(next) || next === state.trendWindow) return;
+    state.trendWindow = next;
+    renderWindowToggle();
+    loadTrendWindow();
+  }
+
   async function loadMarketPulse() {
     if (!MARKET_PULSE_URL) return;
     const fearValue = document.getElementById("fearGreedValue");
     const fearLabel = document.getElementById("fearGreedLabel");
     const buffettValue = document.getElementById("buffettValue");
     const buffettLabel = document.getElementById("buffettLabel");
-    if (!fearValue || !fearLabel || !buffettValue || !buffettLabel) return;
+    const vixValue = document.getElementById("vixValue");
+    const vixLabel = document.getElementById("vixLabel");
+    if (!fearValue || !fearLabel || !buffettValue || !buffettLabel || !vixValue || !vixLabel) return;
 
     fearValue.textContent = "--";
     buffettValue.textContent = "--";
+    vixValue.textContent = "--";
     fearLabel.textContent = "Loading...";
     buffettLabel.textContent = "Loading...";
+    vixLabel.textContent = "Loading...";
 
     try {
       const response = await fetch(MARKET_PULSE_URL);
@@ -904,6 +997,7 @@
       const payload = await response.json();
       const fg = payload?.fearGreed || {};
       const bi = payload?.buffett || {};
+      const vx = payload?.vix || {};
 
       fearValue.textContent = Number.isFinite(Number(fg.value)) ? Math.round(Number(fg.value)).toString() : "--";
       fearLabel.textContent = fg.label || "N/A";
@@ -920,9 +1014,18 @@
         mid: "buffettDateMid",
         end: "buffettDateEnd",
       });
+
+      vixValue.textContent = Number.isFinite(Number(vx.value)) ? Number(vx.value).toFixed(1) : "--";
+      vixLabel.textContent = vx.label || "N/A";
+      renderPulseTrend("vixTrend", "vixAvg", vx.trend60, "#7b5d3a", {
+        start: "vixDateStart",
+        mid: "vixDateMid",
+        end: "vixDateEnd",
+      });
     } catch {
       fearLabel.textContent = "Unavailable";
       buffettLabel.textContent = "Unavailable";
+      vixLabel.textContent = "Unavailable";
       renderPulseTrend("fearGreedTrend", "fearGreedAvg", [], "#147c72", {
         start: "fearGreedDateStart",
         mid: "fearGreedDateMid",
@@ -932,6 +1035,11 @@
         start: "buffettDateStart",
         mid: "buffettDateMid",
         end: "buffettDateEnd",
+      });
+      renderPulseTrend("vixTrend", "vixAvg", [], "#7b5d3a", {
+        start: "vixDateStart",
+        mid: "vixDateMid",
+        end: "vixDateEnd",
       });
     }
   }
@@ -1008,12 +1116,16 @@
     if (saveButton) {
       saveButton.addEventListener("click", saveTargets);
     }
+    [30, 90, 180].forEach((days) => {
+      const button = document.getElementById(`window${days}Button`);
+      if (button) button.addEventListener("click", () => setTrendWindow(days));
+    });
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);
     loadSheet();
     loadHistoricalReturns();
-    loadTrend30();
+    loadTrendWindow();
     loadMarketPulse();
   }
 

@@ -249,10 +249,11 @@ async function fetchYahooMonthlyHistory(ticker) {
   throw lastError || new Error("History unavailable");
 }
 
-async function fetchYahooTrend30(ticker) {
+async function fetchYahooTrend(ticker, days = 30) {
+  const safeDays = Math.max(30, Math.min(365, Number(days) || 30));
   const urls = [
-    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=2mo&interval=1d&events=history&includeAdjustedClose=true`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?range=2mo&interval=1d&events=history&includeAdjustedClose=true`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d&events=history&includeAdjustedClose=true`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d&events=history&includeAdjustedClose=true`,
   ];
   let lastError = null;
 
@@ -266,13 +267,14 @@ async function fetchYahooTrend30(ticker) {
       });
       if (!response.ok) throw new Error(`Trend returned ${response.status}`);
       const payload = await response.json();
-      const daily = parseYahooDailyHistory(payload).slice(-30);
+      const daily = parseYahooDailyHistory(payload).slice(-safeDays);
       if (daily.length < 2) throw new Error("Not enough daily history");
       const first = daily[0].close;
       const last = daily[daily.length - 1].close;
       return {
         ticker,
-        mode: "trend30",
+        mode: "trend",
+        days: safeDays,
         points: daily,
         startDate: daily[0].date,
         endDate: daily[daily.length - 1].date,
@@ -290,6 +292,7 @@ async function fetchYahooTrend30(ticker) {
 module.exports = async function handler(request, response) {
   const ticker = String(request.query?.ticker || "").toUpperCase();
   const mode = String(request.query?.mode || "cagr").toLowerCase();
+  const days = Number(request.query?.days || 30);
   const pulseMode = String(request.query?.pulse || "").toLowerCase();
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
@@ -319,13 +322,13 @@ module.exports = async function handler(request, response) {
     response.status(400).send(JSON.stringify({ error: "Unsupported ticker" }));
     return;
   }
-  if (!["cagr", "trend30"].includes(mode)) {
+  if (!["cagr", "trend30", "trend"].includes(mode)) {
     response.status(400).send(JSON.stringify({ error: "Unsupported mode" }));
     return;
   }
 
   try {
-    const cacheKey = `${ticker}:${mode}`;
+    const cacheKey = mode === "trend" ? `${ticker}:${mode}:${days}` : `${ticker}:${mode}`;
     const cached = historyCache.get(cacheKey);
     const cacheAge = cached ? Date.now() - cached.cachedAt : Infinity;
     if (cached && cacheAge < 6 * 60 * 60 * 1000) {
@@ -333,11 +336,14 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    const data = mode === "trend30" ? await fetchYahooTrend30(ticker) : await fetchYahooMonthlyHistory(ticker);
+    const data =
+      mode === "cagr"
+        ? await fetchYahooMonthlyHistory(ticker)
+        : await fetchYahooTrend(ticker, mode === "trend30" ? 30 : days);
     historyCache.set(cacheKey, { data, cachedAt: Date.now() });
     response.status(200).send(JSON.stringify(data));
   } catch (error) {
-    const cacheKey = `${ticker}:${mode}`;
+    const cacheKey = mode === "trend" ? `${ticker}:${mode}:${days}` : `${ticker}:${mode}`;
     const cached = historyCache.get(cacheKey);
     if (cached) {
       response.status(200).send(JSON.stringify({ ...cached.data, cached: true, warning: error.message }));

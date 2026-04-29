@@ -217,9 +217,55 @@ async function fetchBuffettIndicator() {
   };
 }
 
+function classifyVix(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  if (value < 15) return "Low Volatility";
+  if (value < 25) return "Normal Volatility";
+  if (value < 35) return "Elevated Volatility";
+  return "High Volatility";
+}
+
+async function fetchVixIndicator() {
+  const urls = [
+    "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?range=6mo&interval=1d&events=history&includeAdjustedClose=true",
+    "https://query2.finance.yahoo.com/v8/finance/chart/%5EVIX?range=6mo&interval=1d&events=history&includeAdjustedClose=true",
+  ];
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0 portfolio-rebalancer",
+          accept: "application/json",
+        },
+      });
+      if (!response.ok) throw new Error(`VIX returned ${response.status}`);
+      const payload = await response.json();
+      const daily = parseYahooDailyHistory(payload).slice(-60);
+      if (daily.length < 2) throw new Error("Not enough VIX history");
+      const value = Number(daily[daily.length - 1].close);
+      const trend60 = daily.map((point) => ({ date: point.date, value: Number(point.close) }));
+      const avg60 = trend60.reduce((sum, point) => sum + point.value, 0) / trend60.length;
+      return {
+        value,
+        label: classifyVix(value),
+        trend60,
+        avg60,
+        updatedAt: daily[daily.length - 1].date,
+        source: "Yahoo Finance ^VIX",
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("VIX unavailable");
+}
+
 async function fetchMarketPulse() {
-  const [fearGreed, buffett] = await Promise.all([fetchFearGreedIndex(), fetchBuffettIndicator()]);
-  return { fearGreed, buffett };
+  const [fearGreed, buffett, vix] = await Promise.all([fetchFearGreedIndex(), fetchBuffettIndicator(), fetchVixIndicator()]);
+  return { fearGreed, buffett, vix };
 }
 
 function calculateMovingAverageCagr(monthlyCloses, months = 120) {
@@ -276,10 +322,11 @@ async function fetchYahooMonthlyHistory(ticker) {
   throw lastError || new Error("History unavailable");
 }
 
-async function fetchYahooTrend30(ticker) {
+async function fetchYahooTrend(ticker, days = 30) {
+  const safeDays = Math.max(30, Math.min(365, Number(days) || 30));
   const urls = [
-    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=2mo&interval=1d&events=history&includeAdjustedClose=true`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?range=2mo&interval=1d&events=history&includeAdjustedClose=true`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d&events=history&includeAdjustedClose=true`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d&events=history&includeAdjustedClose=true`,
   ];
   let lastError = null;
 
@@ -293,13 +340,14 @@ async function fetchYahooTrend30(ticker) {
       });
       if (!response.ok) throw new Error(`Trend returned ${response.status}`);
       const payload = await response.json();
-      const daily = parseYahooDailyHistory(payload).slice(-30);
+      const daily = parseYahooDailyHistory(payload).slice(-safeDays);
       if (daily.length < 2) throw new Error("Not enough daily history");
       const first = daily[0].close;
       const last = daily[daily.length - 1].close;
       return {
         ticker,
-        mode: "trend30",
+        mode: "trend",
+        days: safeDays,
         points: daily,
         startDate: daily[0].date,
         endDate: daily[daily.length - 1].date,
@@ -332,17 +380,18 @@ const server = http.createServer(async (request, response) => {
   if (requestUrl.pathname === "/api/history") {
     const ticker = (requestUrl.searchParams.get("ticker") || "").toUpperCase();
     const mode = (requestUrl.searchParams.get("mode") || "cagr").toLowerCase();
+    const days = Number(requestUrl.searchParams.get("days") || 30);
     if (!HISTORY_TICKERS.has(ticker)) {
       send(response, 400, JSON.stringify({ error: "Unsupported ticker" }), "application/json; charset=utf-8");
       return;
     }
-    if (!["cagr", "trend30"].includes(mode)) {
+    if (!["cagr", "trend30", "trend"].includes(mode)) {
       send(response, 400, JSON.stringify({ error: "Unsupported mode" }), "application/json; charset=utf-8");
       return;
     }
 
     try {
-      const cacheKey = `${ticker}:${mode}`;
+      const cacheKey = mode === "trend" ? `${ticker}:${mode}:${days}` : `${ticker}:${mode}`;
       const cached = historyCache.get(cacheKey);
       const cacheAge = cached ? Date.now() - cached.cachedAt : Infinity;
       if (cached && cacheAge < 6 * 60 * 60 * 1000) {
@@ -350,11 +399,14 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const data = mode === "trend30" ? await fetchYahooTrend30(ticker) : await fetchYahooMonthlyHistory(ticker);
+      const data =
+        mode === "cagr"
+          ? await fetchYahooMonthlyHistory(ticker)
+          : await fetchYahooTrend(ticker, mode === "trend30" ? 30 : days);
       historyCache.set(cacheKey, { data, cachedAt: Date.now() });
       send(response, 200, JSON.stringify(data), "application/json; charset=utf-8");
     } catch (error) {
-      const cacheKey = `${ticker}:${mode}`;
+      const cacheKey = mode === "trend" ? `${ticker}:${mode}:${days}` : `${ticker}:${mode}`;
       const cached = historyCache.get(cacheKey);
       if (cached) {
         send(

@@ -43,7 +43,20 @@
           </div>
           <small id="buffettAvg" class="pulse-avg">60포인트 평균 --</small>
         </div>
-      </section>
+      
+        <div class="pulse-card">
+          <span>VIX</span>
+          <strong id="vixValue">--</strong>
+          <em id="vixLabel">Loading...</em>
+          <svg id="vixTrend" class="pulse-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none"></svg>
+          <div class="pulse-axis">
+            <span id="vixDateStart">--</span>
+            <span id="vixDateMid">--</span>
+            <span id="vixDateEnd">--</span>
+          </div>
+          <small id="vixAvg" class="pulse-avg">60-day avg --</small>
+        </div>
+</section>
 
       <section class="summary-grid" aria-label="요약">
         <div class="metric">
@@ -52,6 +65,11 @@
             <input id="contributionInput" type="text" inputmode="numeric" value="400" />
             <span>만원</span>
           </label>
+          <div class="metric-goal">
+            <span>Target Months</span>
+            <strong id="shortMetric">6개월</strong>
+            <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="Target months" />
+          </div>
         </div>
         <div class="metric">
           <span>현재 평가금</span>
@@ -61,15 +79,6 @@
             <strong id="futureMetric">0만원</strong>
           </div>
           <div id="currentHistory" class="metric-history"></div>
-        </div>
-        <div class="metric">
-          <span>매수 후 총액</span>
-          <strong id="futureMetric">0만원</strong>
-        </div>
-        <div class="metric">
-          <span>목표 도달</span>
-          <strong id="shortMetric">6개월</strong>
-          <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="목표 도달 개월 수" />
         </div>
         <div class="metric">
           <span>목표 비중 (%)</span>
@@ -84,10 +93,21 @@
             <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
           </div>
           <div id="targetSaveStatus" class="target-save-status"></div>
+          <div class="window-toggle" role="group" aria-label="Risk window">
+            <button id="window30Button" type="button" class="window-button active">30D</button>
+            <button id="window90Button" type="button" class="window-button">90D</button>
+            <button id="window180Button" type="button" class="window-button">180D</button>
+          </div>
           <div class="target-cagr-mini">
             <div><span>현재</span><strong id="topCurrentCagr">0.0%</strong></div>
             <div><span>1개월 후</span><strong id="topMonthOneCagr">0.0%</strong></div>
             <div><span>목표</span><strong id="topTargetCagr">0.0%</strong></div>
+          </div>
+          <div class="target-risk-mini">
+            <div><span>Current MDD</span><strong id="topCurrentMdd">0.0%</strong></div>
+            <div><span>Current Sharpe</span><strong id="topCurrentSharpe">0.000</strong></div>
+            <div><span>Target MDD</span><strong id="topTargetMdd">0.0%</strong></div>
+            <div><span>Target Sharpe</span><strong id="topTargetSharpe">0.000</strong></div>
           </div>
         </div>
       </section>

@@ -45,7 +45,7 @@ input {
 
 .market-pulse {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -146,7 +146,7 @@ h2 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -191,6 +191,17 @@ label > span {
 .metric-subtotal strong {
   margin-top: 4px;
   font-size: 20px;
+}
+
+.metric-goal {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.metric-goal strong {
+  margin-top: 4px;
+  font-size: 18px;
 }
 
 .metric-history {
@@ -283,6 +294,29 @@ label > span {
   font-size: 11px;
 }
 
+.window-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.window-button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.window-button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .target-cagr-mini {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -304,6 +338,33 @@ label > span {
 }
 
 .target-cagr-mini strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.target-risk-mini {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.target-risk-mini div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 6px;
+}
+
+.target-risk-mini span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.target-risk-mini strong {
   display: block;
   margin-top: 2px;
   color: var(--ink);
