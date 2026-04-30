@@ -14,6 +14,8 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/history" : null;
   const MARKET_PULSE_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/market-pulse" : null;
+  const INSTITUTIONAL_HOLDINGS_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/institutional-holdings" : null;
 
   const state = {
     contribution: 400,
@@ -463,6 +465,25 @@
       bar.appendChild(label);
       history.appendChild(bar);
     });
+  }
+
+  function formatUsdMillions(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    return `$${Math.round(n).toLocaleString("en-US")}M`;
+  }
+
+  function formatDeltaPercent(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "N/A";
+    return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+  }
+
+  function daysSince(dateText) {
+    const d = new Date(`${String(dateText || "").slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = Date.now();
+    return Math.floor((now - d.getTime()) / (24 * 60 * 60 * 1000));
   }
 
   function render() {
@@ -1255,6 +1276,62 @@
     }
   }
 
+  function renderInstitutionalWidget(payload) {
+    const root = document.getElementById("institutionalGrid");
+    const status = document.getElementById("institutionalStatus");
+    if (!root || !status) return;
+    const rows = Array.isArray(payload?.institutions) ? payload.institutions : [];
+    if (rows.length === 0) {
+      status.textContent = "No data";
+      root.innerHTML = "";
+      return;
+    }
+    const asOf = String(payload?.asOf || "").slice(0, 10);
+    status.textContent = `${payload?.source || "SEC 13F"}${asOf ? ` · as of ${asOf}` : ""}`;
+    root.innerHTML = rows
+      .map((inst) => {
+        const items =
+          Array.isArray(inst.top5) && inst.top5.length > 0
+            ? inst.top5
+                .map(
+                  (row, index) =>
+                    `<li>
+                      <span>${index + 1}. ${row.issuer}</span>
+                      <strong>${formatUsdMillions(row.valueUsdM)}</strong>
+                      <em class="delta ${Number(row.deltaPct) >= 0 ? "up" : "down"}">${formatDeltaPercent(row.deltaPct)}</em>
+                    </li>`,
+                )
+                .join("")
+            : `<li class="institution-empty">${inst.error || "No holdings parsed"}</li>`;
+        const dateLabel = inst.reportDate || inst.filingDate || "-";
+        const ageDays = daysSince(inst.reportDate || inst.filingDate);
+        const stale = Number.isFinite(ageDays) && ageDays > 180;
+        return `<article class="institution-card">
+          <div class="institution-head">
+            <h3>${inst.institution}</h3>
+            <span>${dateLabel}</span>
+          </div>
+          ${stale ? `<div class="institution-note">Latest available under current CIK (${ageDays}d old)</div>` : ""}
+          <ol>${items}</ol>
+        </article>`;
+      })
+      .join("");
+  }
+
+  async function loadInstitutionalHoldings() {
+    const status = document.getElementById("institutionalStatus");
+    if (!INSTITUTIONAL_HOLDINGS_URL || !status) return;
+    status.textContent = "Loading latest filings...";
+    try {
+      const response = await fetch(INSTITUTIONAL_HOLDINGS_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      renderInstitutionalWidget(payload);
+    } catch (error) {
+      status.textContent = `Failed: ${error.message}`;
+    }
+  }
+
   async function loadSheet() {
     const status = document.getElementById("sheetStatus");
     status.textContent = "시트 불러오는 중...";
@@ -1344,6 +1421,7 @@
     loadHistoricalReturns();
     loadTrendWindow();
     loadMarketPulse();
+    loadInstitutionalHoldings();
   }
 
   if (typeof module !== "undefined") {

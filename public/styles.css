@@ -56,6 +56,101 @@ body.calendar-hidden .calendar-rail {
   display: none;
 }
 
+.institutional-rail {
+  position: fixed;
+  top: 94px;
+  left: 12px;
+  width: 320px;
+  max-height: calc(100vh - 106px);
+  z-index: 20;
+}
+
+.institutional-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+  height: 100%;
+  overflow: auto;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+}
+
+.institutional-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.institution-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  background: #fbfcfd;
+}
+
+.institution-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.institution-head h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.institution-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.institution-note {
+  margin-bottom: 6px;
+  color: #8a95a6;
+  font-size: 10px;
+}
+
+.institution-card ol {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.institution-card li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.institution-card li span {
+  color: var(--ink);
+}
+
+.institution-card li strong {
+  font-size: 12px;
+}
+
+.institution-card li .delta {
+  font-style: normal;
+  font-size: 11px;
+}
+
+.institution-card li .delta.up {
+  color: #147c72;
+}
+
+.institution-card li .delta.down {
+  color: #bd4a4a;
+}
+
+.institution-empty {
+  color: var(--muted);
+}
+
 .calendar-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -972,6 +1067,7 @@ input:focus {
 }
 
 @media (max-width: 860px) {
+  .institutional-rail,
   .calendar-rail {
     display: none;
   }

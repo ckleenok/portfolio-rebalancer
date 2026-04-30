@@ -10,6 +10,12 @@ const SHEET_CSV_URL =
 const HISTORY_TICKERS = new Set(["GLD", "SCHD", "SPY", "QQQ"]);
 const historyCache = new Map();
 const marketPulseCache = { data: null, cachedAt: 0 };
+const institutionalCache = { data: null, cachedAt: 0 };
+const INSTITUTIONS = [
+  { name: "Berkshire Hathaway", cik: "1067983" },
+  { name: "Bridgewater Associates", cik: "1350694" },
+  { name: "BlackRock", cik: "2012383" },
+];
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -57,6 +63,224 @@ function parseYahooDailyHistory(payload) {
     })
     .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Number.isFinite(row.close) && row.close > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function buildSecHeaders() {
+  return {
+    "user-agent": "portfolio-rebalancer/1.0 (contact: ckleenok@gmail.com)",
+    accept: "application/json, text/plain, */*",
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetries(url, responseType = "json", attempts = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers: buildSecHeaders() });
+      if (!response.ok) {
+        const retriable = response.status === 403 || response.status === 429 || response.status >= 500;
+        if (retriable && attempt < attempts) {
+          await sleep(300 * attempt);
+          continue;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return responseType === "text" ? response.text() : response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await sleep(300 * attempt);
+      }
+    }
+  }
+  throw lastError || new Error("Fetch failed");
+}
+
+async function fetchJson(url) {
+  return fetchWithRetries(url, "json", 3);
+}
+
+async function fetchText(url) {
+  return fetchWithRetries(url, "text", 3);
+}
+
+function parse13fInfoTable(xmlText) {
+  const entries = [];
+  const text = String(xmlText || "");
+  const blocks =
+    text.match(/<(?:\w+:)?infoTable\b[\s\S]*?<\/(?:\w+:)?infoTable>/gi) ||
+    text.match(/<infotable\b[\s\S]*?<\/infotable>/gi) ||
+    [];
+  blocks.forEach((block) => {
+    const issuer = (block.match(/<(?:\w+:)?nameOfIssuer>([\s\S]*?)<\/(?:\w+:)?nameOfIssuer>/i)?.[1] || "").trim();
+    const valueRaw = (block.match(/<(?:\w+:)?value>([\s\S]*?)<\/(?:\w+:)?value>/i)?.[1] || "").trim();
+    const sharesRaw = (block.match(/<(?:\w+:)?sshPrnamt>([\s\S]*?)<\/(?:\w+:)?sshPrnamt>/i)?.[1] || "").trim();
+    const cusip = (block.match(/<(?:\w+:)?cusip>([\s\S]*?)<\/(?:\w+:)?cusip>/i)?.[1] || "").trim();
+    const putCall = (block.match(/<(?:\w+:)?putCall>([\s\S]*?)<\/(?:\w+:)?putCall>/i)?.[1] || "").trim();
+    const value = Number(valueRaw.replace(/[^\d.-]/g, ""));
+    const shares = Number(sharesRaw.replace(/[^\d.-]/g, ""));
+    if (!issuer || !Number.isFinite(value)) return;
+    entries.push({
+      issuer,
+      value,
+      shares: Number.isFinite(shares) ? shares : null,
+      cusip,
+      putCall,
+    });
+  });
+  return entries;
+}
+
+function aggregateHoldingsByIssuer(rows) {
+  const map = new Map();
+  (rows || []).forEach((row) => {
+    if (String(row.putCall || "").trim()) return;
+    const key = String(row.issuer || "").trim().toUpperCase();
+    if (!key) return;
+    const prev = map.get(key) || {
+      issuer: String(row.issuer || "").trim(),
+      value: 0,
+      shares: 0,
+      cusip: row.cusip || "",
+      hasShares: false,
+    };
+    prev.value += Number(row.value) || 0;
+    if (Number.isFinite(Number(row.shares))) {
+      prev.shares += Number(row.shares);
+      prev.hasShares = true;
+    }
+    map.set(key, prev);
+  });
+  return Array.from(map.values()).map((row) => ({
+    issuer: row.issuer,
+    value: row.value,
+    shares: row.hasShares ? row.shares : null,
+    cusip: row.cusip,
+  }));
+}
+
+async function fetch13fByIndex({ cikPadded, recent, index }) {
+  const forms = Array.isArray(recent.form) ? recent.form : [];
+  const accessions = Array.isArray(recent.accessionNumber) ? recent.accessionNumber : [];
+  const primaryDocs = Array.isArray(recent.primaryDocument) ? recent.primaryDocument : [];
+  const reportDates = Array.isArray(recent.reportDate) ? recent.reportDate : [];
+  const filingDates = Array.isArray(recent.filingDate) ? recent.filingDate : [];
+  const accession = accessions[index];
+  const accessionNoDash = String(accession || "").replace(/-/g, "");
+  const cikNoPad = String(Number(cikPadded));
+  const base = `https://www.sec.gov/Archives/edgar/data/${cikNoPad}/${accessionNoDash}`;
+  try {
+    const directInfoTable = await fetchText(`${base}/infotable.xml`);
+    const directParsed = parse13fInfoTable(directInfoTable);
+    if (directParsed.length > 0) {
+      return {
+        holdings: directParsed,
+        form: forms[index],
+        accession,
+        reportDate: reportDates[index] || null,
+        filingDate: filingDates[index] || null,
+      };
+    }
+  } catch {
+    // fallback to index-based file discovery below
+  }
+  const indexJson = await fetchJson(`${base}/index.json`);
+  const files = Array.isArray(indexJson?.directory?.item) ? indexJson.directory.item : [];
+  let xmlName =
+    files.find((item) => /infotable.*\.(xml|txt)$/i.test(item?.name || ""))?.name ||
+    files.find((item) => /\.(xml|txt)$/i.test(item?.name || ""))?.name ||
+    null;
+  if (!xmlName) {
+    xmlName = String(primaryDocs[index] || "");
+  }
+  if (!xmlName) throw new Error("No XML/TXT info table found");
+  const xmlText = await fetchText(`${base}/${xmlName}`);
+  const parsed = parse13fInfoTable(xmlText);
+  if (parsed.length === 0) throw new Error("Unable to parse holdings");
+  return {
+    holdings: parsed,
+    form: forms[index],
+    accession,
+    reportDate: reportDates[index] || null,
+    filingDate: filingDates[index] || null,
+  };
+}
+
+async function fetchInstitutionTopHoldings({ name, cik }) {
+  const cikPadded = String(cik).padStart(10, "0");
+  const submissionsUrl = `https://data.sec.gov/submissions/CIK${cikPadded}.json`;
+  const submissions = await fetchJson(submissionsUrl);
+  const recent = submissions?.filings?.recent || {};
+  const forms = Array.isArray(recent.form) ? recent.form : [];
+  const filingIndexes = forms
+    .map((form, index) => ({ form: String(form || ""), index }))
+    .filter((row) => row.form.startsWith("13F-HR"))
+    .map((row) => row.index);
+  if (filingIndexes.length === 0) throw new Error("No 13F-HR filing found");
+
+  const currentFiling = await fetch13fByIndex({ cikPadded, recent, index: filingIndexes[0] });
+  let previousFiling = null;
+  if (filingIndexes.length > 1) {
+    try {
+      previousFiling = await fetch13fByIndex({ cikPadded, recent, index: filingIndexes[1] });
+    } catch {
+      previousFiling = null;
+    }
+  }
+
+  const aggregatedCurrent = aggregateHoldingsByIssuer(currentFiling.holdings);
+  const aggregatedPrevious = aggregateHoldingsByIssuer(previousFiling?.holdings || []);
+  const previousMap = new Map(aggregatedPrevious.map((row) => [String(row.issuer || "").toUpperCase(), Number(row.value)]));
+
+  const top5 = aggregatedCurrent
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5)
+    .map((row) => ({
+      issuer: row.issuer,
+      valueUsdM: row.value / 1000,
+      prevValueUsdM: Number.isFinite(previousMap.get(String(row.issuer || "").toUpperCase()))
+        ? previousMap.get(String(row.issuer || "").toUpperCase()) / 1000
+        : null,
+      deltaPct:
+        Number.isFinite(previousMap.get(String(row.issuer || "").toUpperCase())) &&
+        previousMap.get(String(row.issuer || "").toUpperCase()) > 0
+          ? row.value / previousMap.get(String(row.issuer || "").toUpperCase()) - 1
+          : null,
+      shares: row.shares,
+      cusip: row.cusip,
+    }));
+  return {
+    institution: name,
+    cik: cikPadded,
+    form: currentFiling.form,
+    accession: currentFiling.accession,
+    reportDate: currentFiling.reportDate,
+    filingDate: currentFiling.filingDate,
+    previousReportDate: previousFiling?.reportDate || null,
+    latestUnderCik: true,
+    top5,
+  };
+}
+
+async function fetchInstitutionalHoldings() {
+  const rows = [];
+  for (const institution of INSTITUTIONS) {
+    try {
+      rows.push(await fetchInstitutionTopHoldings(institution));
+    } catch (error) {
+      rows.push({
+        institution: institution.name,
+        cik: String(institution.cik).padStart(10, "0"),
+        error: error.message,
+        top5: [],
+      });
+    }
+  }
+  return { asOf: new Date().toISOString(), institutions: rows, source: "SEC EDGAR 13F-HR" };
 }
 
 function parseFredCsv(csvText) {
@@ -446,6 +670,38 @@ const server = http.createServer(async (request, response) => {
           response,
           200,
           JSON.stringify({ ...marketPulseCache.data, cached: true, warning: error.message }),
+          "application/json; charset=utf-8",
+        );
+        return;
+      }
+      send(response, 502, JSON.stringify({ error: error.message }), "application/json; charset=utf-8");
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/institutional-holdings") {
+    try {
+      const cacheAge = Date.now() - institutionalCache.cachedAt;
+      if (institutionalCache.data && cacheAge < 6 * 60 * 60 * 1000) {
+        send(response, 200, JSON.stringify({ ...institutionalCache.data, cached: true }), "application/json; charset=utf-8");
+        return;
+      }
+      const data = await fetchInstitutionalHoldings();
+      const hasErrors = (data.institutions || []).some((row) => row.error);
+      if (!hasErrors) {
+        institutionalCache.data = data;
+        institutionalCache.cachedAt = Date.now();
+      } else {
+        institutionalCache.data = null;
+        institutionalCache.cachedAt = 0;
+      }
+      send(response, 200, JSON.stringify(data), "application/json; charset=utf-8");
+    } catch (error) {
+      if (institutionalCache.data) {
+        send(
+          response,
+          200,
+          JSON.stringify({ ...institutionalCache.data, cached: true, warning: error.message }),
           "application/json; charset=utf-8",
         );
         return;
