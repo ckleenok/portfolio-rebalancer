@@ -615,8 +615,15 @@
       const response = await fetch(ACTUAL_TRADES_URL, { cache: "no-store" });
       if (!response.ok) return;
       const payload = await response.json();
+      const storage = String(payload?.storage || "");
+      if (storage && storage !== "kv") {
+        const status = document.getElementById("actualTradesSaveStatus");
+        if (status) status.textContent = "서버 영구저장 미연결: 현재 브라우저 값 사용";
+        return;
+      }
       const currentYm = currentYearMonth();
       const serverMonth = String(payload?.month || "");
+      if (!serverMonth) return;
       if (serverMonth !== currentYm) {
         state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
         saveActualTrades();
@@ -649,6 +656,12 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
+      let responsePayload = null;
+      try {
+        responsePayload = await response.clone().json();
+      } catch {
+        responsePayload = null;
+      }
       if (!response.ok) {
         const params = new URLSearchParams({
           mode: "save",
@@ -660,8 +673,14 @@
         });
         const fallback = await fetch(`${ACTUAL_TRADES_URL}?${params.toString()}`, { method: "GET" });
         if (!fallback.ok) throw new Error(`HTTP ${response.status}`);
+        try {
+          responsePayload = await fallback.clone().json();
+        } catch {
+          responsePayload = null;
+        }
       }
-      if (status) status.textContent = "저장됨";
+      const storage = String(responsePayload?.storage || "");
+      if (status) status.textContent = storage === "kv" ? "저장됨" : "저장됨 (현재 브라우저 위주)";
     } catch (error) {
       if (status) status.textContent = `저장 실패: ${error.message}`;
     }

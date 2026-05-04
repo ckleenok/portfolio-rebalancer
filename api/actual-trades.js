@@ -131,11 +131,14 @@ module.exports = async function handler(request, response) {
       const saved = kv || readTmpRecord();
       response.status(200).send(
         JSON.stringify(
-          saved || {
-            month: "",
-            trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
-            updatedAt: null,
-          },
+          saved
+            ? { ...saved, storage: kv ? "kv" : "tmp" }
+            : {
+                month: "",
+                trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+                updatedAt: null,
+                storage: process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN ? "kv" : "none",
+              },
         ),
       );
     } catch (error) {
@@ -144,6 +147,7 @@ module.exports = async function handler(request, response) {
           month: "",
           trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
           updatedAt: null,
+          storage: "none",
           warning: error.message,
         }),
       );
