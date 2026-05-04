@@ -14,6 +14,11 @@ function parseMonth(month) {
   return /^\d{4}-\d{2}$/.test(value) ? value : null;
 }
 
+function currentYearMonth() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 function readTmpRecord() {
   try {
     if (!fs.existsSync(TMP_FILE)) return null;
@@ -44,12 +49,22 @@ function readRawBody(request) {
 
 async function parseRequestBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
-  if (typeof request.body === "string" && request.body.trim()) {
-    return JSON.parse(request.body);
+  if (typeof request.body === "string") {
+    const text = request.body.trim();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   }
   const raw = await readRawBody(request);
   if (!raw || !raw.trim()) return {};
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 async function readKvRecord() {
@@ -115,11 +130,7 @@ module.exports = async function handler(request, response) {
   if (request.method === "POST") {
     try {
       const body = await parseRequestBody(request);
-      const month = parseMonth(body?.month);
-      if (!month) {
-        response.status(400).send(JSON.stringify({ error: "Invalid month format (YYYY-MM)", got: body?.month ?? null }));
-        return;
-      }
+      const month = parseMonth(body?.month) || currentYearMonth();
 
       const record = {
         month,
