@@ -41,7 +41,6 @@
   };
   const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
   const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
-  const INSTITUTIONAL_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-institutional-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
 
   function parseMoney(value) {
@@ -946,39 +945,6 @@
     }
   }
 
-  function applyInstitutionalVisibility(visible) {
-    if (typeof document === "undefined") return;
-    document.body.classList.toggle("institutional-hidden", !visible);
-    const button = document.getElementById("toggleInstitutionalButton");
-    if (button) {
-      button.textContent = visible ? "<" : ">";
-      button.title = visible ? "Hide 13F Panel" : "Show 13F Panel";
-      button.setAttribute("aria-label", visible ? "Hide 13F Panel" : "Show 13F Panel");
-    }
-  }
-
-  function loadSavedInstitutionalVisibility() {
-    let visible = true;
-    try {
-      const raw = localStorage.getItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY);
-      if (raw === "0") visible = false;
-      if (raw === "1") visible = true;
-    } catch {
-      // ignore storage errors
-    }
-    applyInstitutionalVisibility(visible);
-  }
-
-  function toggleInstitutionalVisibility() {
-    const nextVisible = document.body.classList.contains("institutional-hidden");
-    applyInstitutionalVisibility(nextVisible);
-    try {
-      localStorage.setItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY, nextVisible ? "1" : "0");
-    } catch {
-      // ignore storage errors
-    }
-  }
-
   function pearsonCorrelation(valuesA, valuesB) {
     if (!Array.isArray(valuesA) || !Array.isArray(valuesB)) return null;
     const length = Math.min(valuesA.length, valuesB.length);
@@ -1447,11 +1413,6 @@
     if (toggleCalendarButton) {
       toggleCalendarButton.addEventListener("click", toggleCalendarVisibility);
     }
-    const toggleInstitutionalButton = document.getElementById("toggleInstitutionalButton");
-    if (toggleInstitutionalButton) {
-      toggleInstitutionalButton.addEventListener("click", toggleInstitutionalVisibility);
-    }
-    loadSavedInstitutionalVisibility();
     loadSavedCalendarVisibility();
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
