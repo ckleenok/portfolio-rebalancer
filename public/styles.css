@@ -852,7 +852,9 @@ input:focus {
 }
 
 .buy-card strong {
-  font-size: 20px;
+  font-size: 14px;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .bar-track {
@@ -880,6 +882,33 @@ input:focus {
 .buy-note {
   color: var(--muted);
   font-size: 12px;
+}
+
+.actual-trade-entry {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 54px 59px 28px;
+  align-items: center;
+  gap: 6px;
+}
+
+.actual-trade-entry span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.actual-trade-entry input {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: right;
+}
+
+.actual-trade-entry em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 11px;
 }
 
 .warning {

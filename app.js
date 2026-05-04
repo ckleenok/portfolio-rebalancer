@@ -31,6 +31,7 @@
       SPY: 0.08,
       QQQ: 0.1,
     },
+    actualTrades: {},
   };
 
   const ASSET_COLORS = {
@@ -42,6 +43,7 @@
   const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
   const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
+  const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -514,6 +516,7 @@
       .sort((a, b) => Math.abs(b.trade) - Math.abs(a.trade))
       .forEach((row) => {
         const isSell = row.trade < 0;
+        const actualTrade = Number(state.actualTrades[row.ticker] ?? 0);
         const card = document.createElement("div");
         card.className = `buy-card ${isSell ? "sell-card" : ""}`;
         card.innerHTML = `
@@ -521,15 +524,18 @@
           <div>
             <div class="bar-track"><div class="bar-fill ${isSell ? "sell-fill" : ""}" style="width: ${(Math.abs(row.trade) / maxTrade) * 100}%"></div></div>
             <div class="buy-note">${isSell ? "축소 후" : "매수 후"} ${formatPercent(row.afterWeight)}<br>목표 ${formatPercent(row.target)}</div>
+            <label class="actual-trade-entry">
+              <span>실제 조정</span>
+              <input data-actual-ticker="${row.ticker}" type="text" inputmode="numeric" value="${Math.round(actualTrade).toLocaleString("ko-KR")}" />
+              <em>만원</em>
+            </label>
           </div>
           <strong>${isSell ? "-" : "+"}${formatMoney(Math.abs(row.trade))}</strong>
         `;
         buyList.appendChild(card);
       });
-
-    const warning = document.getElementById("warningBox");
-    warning.hidden = false;
-    warning.textContent = `이번 달 총 매수 ${formatMoney(result.allocated)}, 총 축소 ${formatMoney(result.totalSell)}입니다. 매수 금액에서 축소 금액을 뺀 순투입액은 ${formatMoney(state.contribution)}입니다.`;
+    bindActualTradeInputs(result);
+    renderTradeSummary(result);
 
     const allocationRows = document.getElementById("allocationRows");
     allocationRows.innerHTML = "";
@@ -556,6 +562,52 @@
     renderCagr();
     renderTrendPanel();
     renderWindowToggle();
+  }
+
+  function saveActualTrades() {
+    try {
+      localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function loadSavedActualTrades() {
+    try {
+      const raw = localStorage.getItem(ACTUAL_TRADES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      state.actualTrades = Object.fromEntries(
+        ["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, parseMoney(parsed[ticker] ?? 0)]),
+      );
+    } catch {
+      // ignore parse/storage errors
+    }
+  }
+
+  function bindActualTradeInputs(result) {
+    document.querySelectorAll("[data-actual-ticker]").forEach((input) => {
+      input.addEventListener("input", (event) => {
+        const ticker = event.target.dataset.actualTicker;
+        state.actualTrades[ticker] = parseMoney(event.target.value);
+        saveActualTrades();
+        renderTradeSummary(result);
+      });
+    });
+  }
+
+  function renderTradeSummary(result) {
+    const warning = document.getElementById("warningBox");
+    if (!warning) return;
+    const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
+    const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -Number(state.actualTrades[row.ticker] || 0)), 0);
+    warning.hidden = false;
+    warning.textContent =
+      `계획: 총 매수 ${formatMoney(plannedBuy)}, 총 축소 ${formatMoney(plannedSell)}, 순투입 ${formatMoney(state.contribution)} | ` +
+      `실제: 총 매수 ${formatMoney(actualBuy)}, 총 축소 ${formatMoney(actualSell)}, 순투입 ${formatMoney(actualBuy - actualSell)}`;
   }
 
   function renderCagr() {
@@ -1389,6 +1441,7 @@
     normalizeSummaryLayout();
     loadSavedPlanMonths();
     loadSavedTargets();
+    loadSavedActualTrades();
     renderInputs();
     bindAssetInputs();
     render();
