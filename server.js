@@ -13,6 +13,7 @@ const HISTORY_TICKERS = new Set(["GLD", "SCHD", "SPY", "QQQ"]);
 const historyCache = new Map();
 const marketPulseCache = { data: null, cachedAt: 0 };
 const institutionalCache = { data: null, cachedAt: 0 };
+let actualTradesMemoryRecord = null;
 const INSTITUTIONS = [
   { name: "Berkshire Hathaway", cik: "1067983" },
   { name: "Bridgewater Associates", cik: "1350694" },
@@ -45,6 +46,56 @@ function readActualTradesRecord() {
 function writeActualTradesRecord(payload) {
   fs.mkdirSync(DATA_ROOT, { recursive: true });
   fs.writeFileSync(ACTUAL_TRADES_FILE, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function currentYearMonth() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function normalizeActualTrades(input) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    GLD: Number(source.GLD) || 0,
+    SCHD: Number(source.SCHD) || 0,
+    SPY: Number(source.SPY) || 0,
+    QQQ: Number(source.QQQ) || 0,
+  };
+}
+
+function parseMonth(month) {
+  const value = String(month || "");
+  return /^\d{4}-\d{2}$/.test(value) ? value : currentYearMonth();
+}
+
+async function readKvActualTradesRecord() {
+  const baseUrl = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!baseUrl || !token) return null;
+  const response = await fetch(`${baseUrl}/get/portfolio:actual-trades`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`KV GET ${response.status}`);
+  const payload = await response.json();
+  if (!payload?.result) return null;
+  try {
+    return JSON.parse(payload.result);
+  } catch {
+    return null;
+  }
+}
+
+async function writeKvActualTradesRecord(record) {
+  const baseUrl = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!baseUrl || !token) return false;
+  const value = encodeURIComponent(JSON.stringify(record));
+  const response = await fetch(`${baseUrl}/set/portfolio:actual-trades/${value}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`KV SET ${response.status}`);
+  return true;
 }
 
 function readJsonBody(request) {
@@ -752,16 +803,33 @@ const server = http.createServer(async (request, response) => {
 
   if (requestUrl.pathname === "/api/actual-trades") {
     if (request.method === "GET") {
-      const saved = readActualTradesRecord();
+      let saved = null;
+      let storage = "none";
+      try {
+        const kv = await readKvActualTradesRecord();
+        if (kv) {
+          saved = kv;
+          storage = "kv";
+        }
+      } catch {
+        // ignore and fall back
+      }
+      if (!saved) {
+        saved = actualTradesMemoryRecord || readActualTradesRecord();
+        storage = saved ? "tmp" : "none";
+      }
       send(
         response,
         200,
         JSON.stringify(
-          saved || {
-            month: "",
-            trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
-            updatedAt: null,
-          },
+          saved
+            ? { ...saved, storage }
+            : {
+                month: "",
+                trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+                updatedAt: null,
+                storage: process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN ? "kv" : "none",
+              },
         ),
         "application/json; charset=utf-8",
       );
@@ -771,25 +839,30 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST") {
       try {
         const payload = await readJsonBody(request);
-        const month = String(payload?.month || "");
-        if (!/^\d{4}-\d{2}$/.test(month)) {
-          send(response, 400, JSON.stringify({ error: "Invalid month format" }), "application/json; charset=utf-8");
-          return;
-        }
-        const src = payload?.trades || {};
-        const trades = {
-          GLD: Number(src.GLD) || 0,
-          SCHD: Number(src.SCHD) || 0,
-          SPY: Number(src.SPY) || 0,
-          QQQ: Number(src.QQQ) || 0,
-        };
+        const month = parseMonth(payload?.month);
+        const trades = normalizeActualTrades(payload?.trades);
         const record = {
           month,
           trades,
           updatedAt: new Date().toISOString(),
         };
-        writeActualTradesRecord(record);
-        send(response, 200, JSON.stringify(record), "application/json; charset=utf-8");
+        let storage = "tmp";
+        try {
+          const kvSaved = await writeKvActualTradesRecord(record);
+          if (kvSaved) {
+            storage = "kv";
+          } else {
+            actualTradesMemoryRecord = record;
+          }
+        } catch {
+          actualTradesMemoryRecord = record;
+          try {
+            writeActualTradesRecord(record);
+          } catch {
+            // ignore fs failure on serverless
+          }
+        }
+        send(response, 200, JSON.stringify({ ...record, storage }), "application/json; charset=utf-8");
       } catch (error) {
         send(response, 400, JSON.stringify({ error: error.message }), "application/json; charset=utf-8");
       }
