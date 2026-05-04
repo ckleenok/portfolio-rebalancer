@@ -44,6 +44,7 @@
   const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
   const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
+  const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -566,7 +567,10 @@
 
   function saveActualTrades() {
     try {
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+      localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, ym);
     } catch {
       // ignore storage errors
     }
@@ -574,6 +578,15 @@
 
   function loadSavedActualTrades() {
     try {
+      const now = new Date();
+      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const savedYm = localStorage.getItem(ACTUAL_TRADES_MONTH_KEY);
+      if (savedYm !== currentYm) {
+        state.actualTrades = Object.fromEntries(["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, 0]));
+        localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+        localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, currentYm);
+        return;
+      }
       const raw = localStorage.getItem(ACTUAL_TRADES_STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
