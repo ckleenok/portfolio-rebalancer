@@ -65,6 +65,23 @@ body.calendar-hidden .calendar-rail {
   z-index: 20;
 }
 
+.institutional-toggle-btn {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+body.institutional-hidden .institutional-rail {
+  width: 48px;
+}
+
+body.institutional-hidden .institutional-rail .institutional-card {
+  display: none;
+}
+
 .institutional-card {
   border: 1px solid var(--line);
   border-radius: 8px;
