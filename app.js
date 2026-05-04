@@ -917,7 +917,7 @@
     document.body.classList.toggle("calendar-hidden", !visible);
     const button = document.getElementById("toggleCalendarButton");
     if (button) {
-      button.textContent = visible ? "<" : ">";
+      button.textContent = visible ? "◀" : "▶";
       button.title = visible ? "Hide Calendar" : "Show Calendar";
       button.setAttribute("aria-label", visible ? "Hide Calendar" : "Show Calendar");
     }

@@ -52,15 +52,7 @@ input {
   z-index: 20;
 }
 
-.calendar-rail-toggle {
-  margin: 0 0 8px auto;
-}
-
 body.calendar-hidden .calendar-rail {
-  width: 48px;
-}
-
-body.calendar-hidden .calendar-rail .calendar-card {
   display: none;
 }
 

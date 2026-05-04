@@ -24,13 +24,16 @@
 <h1>Portfolio Manager</h1>
         </div>
         <div class="topbar-actions">
-          <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet?�서 최신 ??불러?�기">
-          ?�트 불러?�기
+          <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet에서 최신 행 불러오기">
+          시트 불러오기
         </button>
-</div>
+          <button id="toggleCalendarButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide Calendar" aria-label="Hide Calendar">
+            ◀
+          </button>
+        </div>
       </section>
 
-      <section class="market-pulse" aria-label="?�장 지??>
+      <section class="market-pulse" aria-label="시장 지표">
         <div class="pulse-card">
           <span>Fear &amp; Greed</span>
           <strong id="fearGreedValue">--</strong>
@@ -41,7 +44,7 @@
             <span id="fearGreedDateMid">--</span>
             <span id="fearGreedDateEnd">--</span>
           </div>
-          <small id="fearGreedAvg" class="pulse-avg">60?�인???�균 --</small>
+          <small id="fearGreedAvg" class="pulse-avg">60포인트 평균 --</small>
         </div>
         <div class="pulse-card">
           <span>Buffett Indicator</span>
@@ -53,7 +56,7 @@
             <span id="buffettDateMid">--</span>
             <span id="buffettDateEnd">--</span>
           </div>
-          <small id="buffettAvg" class="pulse-avg">60?�인???�균 --</small>
+          <small id="buffettAvg" class="pulse-avg">60포인트 평균 --</small>
         </div>
       
         <div class="pulse-card">
@@ -70,9 +73,9 @@
         </div>
 </section>
 
-      <section class="summary-grid" aria-label="?�약">
+      <section class="summary-grid" aria-label="요약">
         <div class="metric">
-          <span>?�규 ?�자�?/span>
+          <span>신규 투자금</span>
           <label class="metric-input">
             <input id="contributionInput" type="text" inputmode="numeric" value="400" />
             <span>만원</span>
@@ -84,9 +87,9 @@
           </div>
         </div>
         <div class="metric">
-          <span>?�재 ?��?�?/span>
+          <span>현재 평가금</span>
           <strong id="currentMetric">0만원</strong>
-          <div class="metric-history-title">지??6개월 ?�재 ?��?�?/div>
+          <div class="metric-history-title">지난 6개월 현재 평가금</div>
           <div id="currentHistory" class="metric-history"></div>
           <div class="panel-title">
             <h2>Current Holdings</h2>
@@ -108,7 +111,7 @@
             <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="30" /></label>
           </div>
           <div class="target-actions">
-            <div class="target-total">?�계 <strong id="targetTotalDisplay">100.0%</strong></div>
+            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
             <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
           </div>
           <div id="targetSaveStatus" class="target-save-status"></div>
@@ -118,8 +121,8 @@
             <button id="window180Button" type="button" class="window-button">180D</button>
           </div>
           <div class="target-cagr-mini">
-            <div><span>?�재</span><strong id="topCurrentCagr">0.0%</strong></div>
-            <div><span>1개월 ??/span><strong id="topMonthOneCagr">0.0%</strong></div>
+            <div><span>현재</span><strong id="topCurrentCagr">0.0%</strong></div>
+            <div><span>1개월 후</span><strong id="topMonthOneCagr">0.0%</strong></div>
             <div><span>목표</span><strong id="topTargetCagr">0.0%</strong></div>
           </div>
           <div class="target-risk-mini">
@@ -141,8 +144,8 @@
 
 <div class="panel result-panel">
           <div class="panel-title">
-            <h2>?�번 ??거래</h2>
-            <span id="tradeHorizonText">6개월??걸쳐 ?�진 조정</span>
+            <h2>이번 달 거래</h2>
+            <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
           </div>
           <div id="buyList" class="buy-list"></div>
           <div id="warningBox" class="warning" hidden></div>
@@ -150,8 +153,8 @@
 
         <div class="panel trend-panel">
           <div class="panel-title">
-            <h2>최근 30??추세</h2>
-            <span id="trendStatus">?�이??불러?�는 �?..</span>
+            <h2>최근 30일 추세</h2>
+            <span id="trendStatus">데이터 불러오는 중...</span>
           </div>
           <div id="trendGrid" class="trend-grid"></div>
         </div>
@@ -159,7 +162,7 @@
 
       <section class="panel">
         <div class="panel-title">
-          <h2>비중 변??/h2>
+          <h2>비중 변화</h2>
           <span id="allocationTargetSummary">목표 GLD 41 / SCHD 7 / SPY 22 / QQQ 30</span>
         </div>
         <div id="allocationRows" class="allocation-rows"></div>
@@ -167,25 +170,25 @@
 
       <section class="panel cagr-panel">
         <div class="panel-title">
-          <h2>?�상 CAGR</h2>
-          <span id="historyStatus">?�산�?CAGR 가?�의 비중 가중평�?/span>
+          <h2>예상 CAGR</h2>
+          <span id="historyStatus">자산별 CAGR 가정의 비중 가중평균</span>
         </div>
         <button id="loadHistoryButton" class="ghost-button inline-button" type="button">
-          최근 120개월 ?�제 ?�이??반영
+          최근 120개월 실제 데이터 반영
         </button>
         <div class="cagr-grid">
           <div class="cagr-metric">
-            <span>?�재 ?�트?�리??/span>
+            <span>현재 포트폴리오</span>
             <strong id="currentCagr">0.0%</strong>
             <svg id="currentCagrTrend" class="cagr-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none"></svg>
             <div id="currentCagrTrendMeta" class="cagr-trend-meta">?? 30? ??</div>
           </div>
           <div class="cagr-metric">
-            <span>1개월�?거래 ??/span>
+            <span>1개월차 거래 후</span>
             <strong id="monthOneCagr">0.0%</strong>
           </div>
           <div class="cagr-metric">
-            <span>목표 ?�트?�리??/span>
+            <span>목표 포트폴리오</span>
             <strong id="targetCagr">0.0%</strong>
             <svg id="targetCagrTrend" class="cagr-trend-svg" viewBox="0 0 280 42" preserveAspectRatio="none"></svg>
             <div id="targetCagrTrendMeta" class="cagr-trend-meta">?? 30? ??</div>
@@ -195,14 +198,13 @@
 
       <section class="panel simulator-panel">
         <div class="panel-title">
-          <h2>?�별 ?��??�이??/h2>
-          <span id="simulationSummary">계산 �?/span>
+          <h2>월별 시뮬레이터</h2>
+          <span id="simulationSummary">계산 중</span>
         </div>
         <div id="simulationList" class="simulation-list"></div>
       </section>
         </div>
         <aside class="calendar-rail" aria-label="Google Calendar">
-          <button id="toggleCalendarButton" class="ghost-button calendar-toggle-btn calendar-rail-toggle" type="button" title="Hide Calendar" aria-label="Hide Calendar">&lt;</button>
           <div class="calendar-card">
             <div class="panel-title">
               <h2>Google Calendar</h2>
@@ -222,4 +224,3 @@
     <script src="./app.js?v=20260427-05"></script>
   </body>
 </html>
-
