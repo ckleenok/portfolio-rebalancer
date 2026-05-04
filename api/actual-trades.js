@@ -103,6 +103,30 @@ module.exports = async function handler(request, response) {
 
   if (request.method === "GET") {
     try {
+      const mode = String(request.query?.mode || "");
+      if (mode.toLowerCase() === "save") {
+        const month = parseMonth(request.query?.month) || currentYearMonth();
+        const record = {
+          month,
+          trades: normalizeTrades({
+            GLD: request.query?.GLD,
+            SCHD: request.query?.SCHD,
+            SPY: request.query?.SPY,
+            QQQ: request.query?.QQQ,
+          }),
+          updatedAt: new Date().toISOString(),
+        };
+        let storage = "tmp";
+        try {
+          const kvSaved = await writeKvRecord(record);
+          if (kvSaved) storage = "kv";
+        } catch {
+          writeTmpRecord(record);
+        }
+        response.status(200).send(JSON.stringify({ ...record, storage }));
+        return;
+      }
+
       const kv = await readKvRecord();
       const saved = kv || readTmpRecord();
       response.status(200).send(

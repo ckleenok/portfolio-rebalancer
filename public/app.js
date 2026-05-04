@@ -649,7 +649,18 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const params = new URLSearchParams({
+          mode: "save",
+          month: payload.month,
+          GLD: String(payload.trades.GLD ?? 0),
+          SCHD: String(payload.trades.SCHD ?? 0),
+          SPY: String(payload.trades.SPY ?? 0),
+          QQQ: String(payload.trades.QQQ ?? 0),
+        });
+        const fallback = await fetch(`${ACTUAL_TRADES_URL}?${params.toString()}`, { method: "GET" });
+        if (!fallback.ok) throw new Error(`HTTP ${response.status}`);
+      }
       if (status) status.textContent = "저장됨";
     } catch (error) {
       if (status) status.textContent = `저장 실패: ${error.message}`;
