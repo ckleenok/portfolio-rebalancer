@@ -30,6 +30,28 @@ function writeTmpRecord(record) {
   fs.writeFileSync(TMP_FILE, JSON.stringify(record, null, 2), "utf8");
 }
 
+function readRawBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk || "");
+      if (body.length > 1024 * 1024) reject(new Error("Payload too large"));
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
+}
+
+async function parseRequestBody(request) {
+  if (request.body && typeof request.body === "object") return request.body;
+  if (typeof request.body === "string" && request.body.trim()) {
+    return JSON.parse(request.body);
+  }
+  const raw = await readRawBody(request);
+  if (!raw || !raw.trim()) return {};
+  return JSON.parse(raw);
+}
+
 async function readKvRecord() {
   const baseUrl = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
@@ -92,15 +114,16 @@ module.exports = async function handler(request, response) {
 
   if (request.method === "POST") {
     try {
-      const month = parseMonth(request.body?.month);
+      const body = await parseRequestBody(request);
+      const month = parseMonth(body?.month);
       if (!month) {
-        response.status(400).send(JSON.stringify({ error: "Invalid month format (YYYY-MM)" }));
+        response.status(400).send(JSON.stringify({ error: "Invalid month format (YYYY-MM)", got: body?.month ?? null }));
         return;
       }
 
       const record = {
         month,
-        trades: normalizeTrades(request.body?.trades),
+        trades: normalizeTrades(body?.trades),
         updatedAt: new Date().toISOString(),
       };
 
@@ -121,4 +144,3 @@ module.exports = async function handler(request, response) {
 
   response.status(405).send(JSON.stringify({ error: "Method not allowed" }));
 };
-
