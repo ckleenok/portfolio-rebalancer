@@ -5,6 +5,8 @@ const path = require("path");
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
 const STATIC_ROOT = path.join(__dirname, "public");
+const DATA_ROOT = path.join(__dirname, "data");
+const ACTUAL_TRADES_FILE = path.join(DATA_ROOT, "actual-trades.json");
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1HM_Jxv6zQzr-O5Spt06uq2HTyX1yFTVju2jzVjneL5M/export?format=csv&gid=172728277";
 const HISTORY_TICKERS = new Set(["GLD", "SCHD", "SPY", "QQQ"]);
@@ -26,6 +28,43 @@ const TYPES = {
 function send(response, status, body, type = "text/plain; charset=utf-8") {
   response.writeHead(status, { "content-type": type, "cache-control": "no-store" });
   response.end(body);
+}
+
+function readActualTradesRecord() {
+  try {
+    if (!fs.existsSync(ACTUAL_TRADES_FILE)) return null;
+    const raw = fs.readFileSync(ACTUAL_TRADES_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeActualTradesRecord(payload) {
+  fs.mkdirSync(DATA_ROOT, { recursive: true });
+  fs.writeFileSync(ACTUAL_TRADES_FILE, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk || "");
+      if (body.length > 1024 * 1024) {
+        reject(new Error("Payload too large"));
+      }
+    });
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    request.on("error", reject);
+  });
 }
 
 function safeFilePath(urlPath) {
@@ -708,6 +747,56 @@ const server = http.createServer(async (request, response) => {
       }
       send(response, 502, JSON.stringify({ error: error.message }), "application/json; charset=utf-8");
     }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/actual-trades") {
+    if (request.method === "GET") {
+      const saved = readActualTradesRecord();
+      send(
+        response,
+        200,
+        JSON.stringify(
+          saved || {
+            month: "",
+            trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+            updatedAt: null,
+          },
+        ),
+        "application/json; charset=utf-8",
+      );
+      return;
+    }
+
+    if (request.method === "POST") {
+      try {
+        const payload = await readJsonBody(request);
+        const month = String(payload?.month || "");
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+          send(response, 400, JSON.stringify({ error: "Invalid month format" }), "application/json; charset=utf-8");
+          return;
+        }
+        const src = payload?.trades || {};
+        const trades = {
+          GLD: Number(src.GLD) || 0,
+          SCHD: Number(src.SCHD) || 0,
+          SPY: Number(src.SPY) || 0,
+          QQQ: Number(src.QQQ) || 0,
+        };
+        const record = {
+          month,
+          trades,
+          updatedAt: new Date().toISOString(),
+        };
+        writeActualTradesRecord(record);
+        send(response, 200, JSON.stringify(record), "application/json; charset=utf-8");
+      } catch (error) {
+        send(response, 400, JSON.stringify({ error: error.message }), "application/json; charset=utf-8");
+      }
+      return;
+    }
+
+    send(response, 405, JSON.stringify({ error: "Method not allowed" }), "application/json; charset=utf-8");
     return;
   }
 

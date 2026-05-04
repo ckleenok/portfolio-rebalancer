@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260427-05" />
+    <link rel="stylesheet" href="./styles.css?v=20260504-02" />
   </head>
   <body>
     <main class="app-shell">
@@ -20,8 +20,13 @@
         </aside>
         <div class="app-main">
       <section class="topbar">
-        <div>
-<h1>Portfolio Manager</h1>
+        <div class="topbar-left">
+          <button id="toggleInstitutionalButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide 13F Panel" aria-label="Hide 13F Panel">
+            13F
+          </button>
+        </div>
+        <div class="topbar-center">
+          <h1>Portfolio Manager</h1>
         </div>
         <div class="topbar-actions">
           <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet에서 최신 행 불러오기">
@@ -145,8 +150,12 @@
 <div class="panel result-panel">
           <div class="panel-title">
             <h2>이번 달 거래</h2>
-            <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
+            <div class="trade-panel-actions">
+              <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
+              <button id="saveActualTradesButton" class="ghost-button trade-save-button" type="button">Save</button>
+            </div>
           </div>
+          <div id="actualTradesSaveStatus" class="target-save-status"></div>
           <div id="buyList" class="buy-list"></div>
           <div id="warningBox" class="warning" hidden></div>
         </div>
@@ -221,6 +230,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260427-05"></script>
+    <script src="./app.js?v=20260504-02"></script>
   </body>
 </html>

@@ -16,6 +16,8 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/market-pulse" : null;
   const INSTITUTIONAL_HOLDINGS_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/institutional-holdings" : null;
+  const ACTUAL_TRADES_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
 
   const state = {
     contribution: 400,
@@ -42,9 +44,11 @@
   };
   const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
   const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
+  const INSTITUTIONAL_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-institutional-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
   const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
   const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
+  const ACTUAL_TRADE_TICKERS = ["GLD", "SCHD", "SPY", "QQQ"];
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -576,13 +580,21 @@
     }
   }
 
+  function currentYearMonth() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function normalizeActualTrades(input) {
+    return Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, parseMoney(input?.[ticker] ?? 0)]));
+  }
+
   function loadSavedActualTrades() {
     try {
-      const now = new Date();
-      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const currentYm = currentYearMonth();
       const savedYm = localStorage.getItem(ACTUAL_TRADES_MONTH_KEY);
       if (savedYm !== currentYm) {
-        state.actualTrades = Object.fromEntries(["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, 0]));
+        state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
         localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
         localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, currentYm);
         return;
@@ -591,11 +603,56 @@
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return;
-      state.actualTrades = Object.fromEntries(
-        ["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, parseMoney(parsed[ticker] ?? 0)]),
-      );
+      state.actualTrades = normalizeActualTrades(parsed);
     } catch {
       // ignore parse/storage errors
+    }
+  }
+
+  async function loadActualTradesFromServer() {
+    if (!ACTUAL_TRADES_URL) return;
+    try {
+      const response = await fetch(ACTUAL_TRADES_URL, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const currentYm = currentYearMonth();
+      const serverMonth = String(payload?.month || "");
+      if (serverMonth !== currentYm) {
+        state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        saveActualTrades();
+        render();
+        return;
+      }
+      state.actualTrades = normalizeActualTrades(payload?.trades || {});
+      saveActualTrades();
+      render();
+    } catch {
+      // keep local fallback
+    }
+  }
+
+  async function saveActualTradesToServer() {
+    const status = document.getElementById("actualTradesSaveStatus");
+    if (!ACTUAL_TRADES_URL) {
+      if (status) status.textContent = "로컬 환경에서는 브라우저에만 저장됩니다.";
+      return;
+    }
+    const payload = {
+      month: currentYearMonth(),
+      trades: normalizeActualTrades(state.actualTrades),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      if (status) status.textContent = "저장 중...";
+      const response = await fetch(ACTUAL_TRADES_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (status) status.textContent = "저장됨";
+    } catch (error) {
+      if (status) status.textContent = `저장 실패: ${error.message}`;
     }
   }
 
@@ -1005,6 +1062,39 @@
     applyCalendarVisibility(nextVisible);
     try {
       localStorage.setItem(CALENDAR_VISIBLE_STORAGE_KEY, nextVisible ? "1" : "0");
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function applyInstitutionalVisibility(visible) {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("institutional-hidden", !visible);
+    const button = document.getElementById("toggleInstitutionalButton");
+    if (button) {
+      button.textContent = visible ? "13F" : "+13F";
+      button.title = visible ? "Hide 13F Panel" : "Show 13F Panel";
+      button.setAttribute("aria-label", visible ? "Hide 13F Panel" : "Show 13F Panel");
+    }
+  }
+
+  function loadSavedInstitutionalVisibility() {
+    let visible = true;
+    try {
+      const raw = localStorage.getItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY);
+      if (raw === "0") visible = false;
+      if (raw === "1") visible = true;
+    } catch {
+      // ignore storage errors
+    }
+    applyInstitutionalVisibility(visible);
+  }
+
+  function toggleInstitutionalVisibility() {
+    const nextVisible = document.body.classList.contains("institutional-hidden");
+    applyInstitutionalVisibility(nextVisible);
+    try {
+      localStorage.setItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY, nextVisible ? "1" : "0");
     } catch {
       // ignore storage errors
     }
@@ -1479,7 +1569,16 @@
     if (toggleCalendarButton) {
       toggleCalendarButton.addEventListener("click", toggleCalendarVisibility);
     }
+    const toggleInstitutionalButton = document.getElementById("toggleInstitutionalButton");
+    if (toggleInstitutionalButton) {
+      toggleInstitutionalButton.addEventListener("click", toggleInstitutionalVisibility);
+    }
+    const saveActualTradesButton = document.getElementById("saveActualTradesButton");
+    if (saveActualTradesButton) {
+      saveActualTradesButton.addEventListener("click", saveActualTradesToServer);
+    }
     loadSavedCalendarVisibility();
+    loadSavedInstitutionalVisibility();
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);
@@ -1488,6 +1587,7 @@
     loadTrendWindow();
     loadMarketPulse();
     loadInstitutionalHoldings();
+    loadActualTradesFromServer();
   }
 
   if (typeof module !== "undefined") {
