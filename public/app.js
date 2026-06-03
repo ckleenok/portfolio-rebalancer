@@ -565,6 +565,7 @@
 
     renderSimulation();
     renderCagr();
+    renderMonthlyReport(result, normalizedAssets);
     renderTrendPanel();
     renderWindowToggle();
   }
@@ -708,6 +709,100 @@
     warning.textContent =
       `계획: 총 매수 ${formatMoney(plannedBuy)}, 총 축소 ${formatMoney(plannedSell)}, 순투입 ${formatMoney(state.contribution)} | ` +
       `실제: 총 매수 ${formatMoney(actualBuy)}, 총 축소 ${formatMoney(actualSell)}, 순투입 ${formatMoney(actualBuy - actualSell)}`;
+  }
+
+  function setText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  }
+
+  function formatSignedMoney(value) {
+    const rounded = Math.round(Number(value) || 0);
+    const sign = rounded > 0 ? "+" : "";
+    return `${sign}${rounded.toLocaleString("ko-KR")}만원`;
+  }
+
+  function formatRiskPercent(value) {
+    return `${(Number(value || 0) * 100).toFixed(1)}%`;
+  }
+
+  function buildWeightsFromAssets(assets) {
+    const total = assets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
+    return Object.fromEntries(
+      assets.map((asset) => [asset.ticker, total > 0 ? Math.max(0, Number(asset.current) || 0) / total : 0]),
+    );
+  }
+
+  function renderMonthlyReport(result, normalizedAssets) {
+    const tbody = document.getElementById("monthlyReportRows");
+    if (!tbody) return;
+
+    const monthLabel = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+    setText("monthlyReportDate", `${monthLabel} 기준`);
+
+    const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
+    const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
+    const plannedNet = plannedBuy - plannedSell;
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualNet = actualBuy - actualSell;
+    const netGap = actualNet - plannedNet;
+    const adherence = plannedNet !== 0 ? Math.max(0, Math.min(999, (actualNet / plannedNet) * 100)) : 0;
+
+    setText("reportPlannedNet", formatMoney(plannedNet));
+    setText("reportPlanDetail", `매수 ${formatMoney(plannedBuy)} / 축소 ${formatMoney(plannedSell)}`);
+    setText("reportActualNet", formatMoney(actualNet));
+    setText("reportActualDetail", `매수 ${formatMoney(actualBuy)} / 축소 ${formatMoney(actualSell)}`);
+    setText("reportNetGap", formatSignedMoney(netGap));
+    setText("reportAdherence", `진행률 ${adherence.toFixed(1)}%`);
+
+    const actualAssets = normalizedAssets.map((asset) => ({
+      ...asset,
+      current: Math.max(0, asset.current + Number(state.actualTrades[asset.ticker] || 0)),
+    }));
+    const targetAssets = normalizedAssets.map((asset) => ({
+      ...asset,
+      current: asset.target * Math.max(result.currentTotal + actualNet, result.currentTotal, 1),
+    }));
+
+    const currentWeights = buildWeightsFromAssets(normalizedAssets);
+    const actualWeights = buildWeightsFromAssets(actualAssets);
+    const targetWeights = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset.target]));
+    const currentRisk = calculateRiskMetrics(buildPortfolioIndexSeries(currentWeights));
+    const actualRisk = calculateRiskMetrics(buildPortfolioIndexSeries(actualWeights));
+    const targetRisk = calculateRiskMetrics(buildPortfolioIndexSeries(targetWeights));
+    const currentCagr = calculateExpectedCagr(normalizedAssets);
+    const actualCagr = calculateExpectedCagr(actualAssets);
+    const targetCagr = calculateTargetExpectedCagr(normalizedAssets);
+
+    const nextRow = normalizedAssets
+      .map((asset) => ({
+        ticker: asset.ticker,
+        gap: (actualWeights[asset.ticker] || 0) - asset.target,
+      }))
+      .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0];
+    setText("reportNextTicker", nextRow?.ticker || "--");
+    setText("reportNextDetail", nextRow ? `목표 대비 ${formatPercent(nextRow.gap)}` : "목표 대비 차이 --");
+
+    const rows = [
+      ["총 평가금", formatMoney(result.currentTotal), formatMoney(result.currentTotal + actualNet), formatMoney(targetAssets.reduce((sum, asset) => sum + asset.current, 0))],
+      ["CAGR", formatPercent(currentCagr), formatPercent(actualCagr), formatPercent(targetCagr)],
+      ["MDD", formatRiskPercent(currentRisk.mdd), formatRiskPercent(actualRisk.mdd), formatRiskPercent(targetRisk.mdd)],
+      ["Sharpe", currentRisk.sharpe.toFixed(3), actualRisk.sharpe.toFixed(3), targetRisk.sharpe.toFixed(3)],
+    ];
+
+    tbody.innerHTML = rows
+      .map(
+        ([label, current, actual, target]) => `
+          <tr>
+            <th>${label}</th>
+            <td>${current}</td>
+            <td>${actual}</td>
+            <td>${target}</td>
+          </tr>
+        `,
+      )
+      .join("");
   }
 
   function renderCagr() {

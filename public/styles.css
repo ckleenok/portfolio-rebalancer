@@ -1002,6 +1002,77 @@ input:focus {
   gap: 10px;
 }
 
+.monthly-report-panel {
+  margin-top: 14px;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.report-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.report-card span,
+.report-card em {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.report-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.report-card em {
+  margin-top: 5px;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.report-table th,
+.report-table td {
+  border-top: 1px solid var(--line);
+  padding: 10px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.report-table th:first-child,
+.report-table td:first-child {
+  text-align: left;
+}
+
+.report-table thead th {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.report-table tbody th {
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .allocation-row {
   display: grid;
   grid-template-columns: 76px 1fr 88px 88px 88px;
@@ -1129,7 +1200,8 @@ input:focus {
   }
 
   .summary-grid,
-  .cagr-grid {
+  .cagr-grid,
+  .report-grid {
     grid-template-columns: 1fr;
   }
 
