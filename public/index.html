@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260603-report-01" />
+    <link rel="stylesheet" href="./styles.css?v=20260609-source-risk-01" />
   </head>
   <body>
     <main class="app-shell">
@@ -209,6 +209,27 @@
             <tbody id="monthlyReportRows"></tbody>
           </table>
         </div>
+        <div class="report-subsection">
+          <div class="panel-title compact-title">
+            <h3>원본 데이터 리스크 변화</h3>
+            <span id="sourceRiskStatus">시트 원본 스냅샷 기준</span>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>기간</th>
+                  <th>MDD</th>
+                  <th>MDD 변화</th>
+                  <th>Sharpe</th>
+                  <th>Sharpe 변화</th>
+                  <th>관측값</th>
+                </tr>
+              </thead>
+              <tbody id="sourceRiskRows"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section class="panel">
@@ -272,6 +293,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260603-report-01"></script>
+    <script src="./app.js?v=20260609-source-risk-01"></script>
   </body>
 </html>

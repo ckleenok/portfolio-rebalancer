@@ -18,7 +18,6 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/institutional-holdings" : null;
   const ACTUAL_TRADES_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
-
   const state = {
     contribution: 400,
     planMonths: 6,
@@ -34,6 +33,7 @@
       QQQ: 0.1,
     },
     actualTrades: {},
+    sourceSnapshots: [],
   };
 
   const ASSET_COLORS = {
@@ -285,6 +285,67 @@
       .trim();
   }
 
+  function parseSheetDate(value) {
+    const text = normalizeCell(value).replace(/\.$/, "");
+    const parts = text.split(/[.\/-]/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
+    const rawYear = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2] || 1);
+    if (!Number.isFinite(rawYear) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  }
+
+  function parseSourcePortfolioSnapshots(lines) {
+    const snapshots = [];
+    for (const row of lines) {
+      const preferredDate = parseSheetDate(row[16]);
+      const preferredValues = [row[17], row[18], row[19], row[20]].map(parseMoney);
+      if (preferredDate && preferredValues.every((value) => value > 0)) {
+        const cash = parseMoney(row[21]);
+        const invested = preferredValues.reduce((sum, value) => sum + value, 0);
+        snapshots.push({
+          date: preferredDate,
+          dateLabel: normalizeCell(row[16]),
+          SPY: preferredValues[0],
+          QQQ: preferredValues[1],
+          SCHD: preferredValues[2],
+          GLD: preferredValues[3],
+          cash: cash > 0 ? cash : 0,
+          total: invested + (cash > 0 ? cash : 0),
+          invested,
+        });
+        continue;
+      }
+      for (let index = 0; index <= row.length - 5; index += 1) {
+        const date = parseSheetDate(row[index]);
+        if (!date) continue;
+        const values = [row[index + 1], row[index + 2], row[index + 3], row[index + 4]].map(parseMoney);
+        if (!values.every((value) => value > 0)) continue;
+        const cash = parseMoney(row[index + 5]);
+        const invested = values.reduce((sum, value) => sum + value, 0);
+        snapshots.push({
+          date,
+          dateLabel: normalizeCell(row[index]),
+          SPY: values[0],
+          QQQ: values[1],
+          SCHD: values[2],
+          GLD: values[3],
+          cash: cash > 0 ? cash : 0,
+          total: invested + (cash > 0 ? cash : 0),
+          invested,
+        });
+        break;
+      }
+    }
+    return snapshots
+      .filter((row) => Number.isFinite(row.total) && row.total > 0)
+      .sort((a, b) => a.date - b.date);
+  }
+
   function parseLatestSheetRow(csvText) {
     const lines = String(csvText || "")
       .split(/\r?\n/)
@@ -312,6 +373,8 @@
     let latest = null;
     let latestRawRow = null;
 
+    const sourceSnapshots = parseSourcePortfolioSnapshots(lines);
+
     if (columns && Object.values(columns).every((index) => index >= 0)) {
       const totalsHistory = [];
       for (const row of lines) {
@@ -328,7 +391,7 @@
         totalsHistory.length > 0
           ? totalsHistory.slice(-6)
           : findRecentTotalsFromSheet(lines);
-      return latest ? { ...latest, recentCurrentTotals } : null;
+      return latest ? { ...latest, recentCurrentTotals, sourceSnapshots } : null;
     }
 
     for (const row of lines) {
@@ -344,7 +407,7 @@
     }
 
     const recentCurrentTotals = findRecentTotalsFromSheet(lines);
-    return latest ? { ...latest, recentCurrentTotals } : null;
+    return latest ? { ...latest, recentCurrentTotals, sourceSnapshots } : null;
   }
 
   function findRecentTotalsFromSheet(lines) {
@@ -803,6 +866,7 @@
         `,
       )
       .join("");
+    renderSourceRiskRows();
   }
 
   function renderCagr() {
@@ -890,6 +954,7 @@
     if (!row) return false;
     state.assets = state.assets.map((asset) => ({ ...asset, current: row[asset.ticker] ?? asset.current }));
     state.recentCurrentTotals = Array.isArray(row.recentCurrentTotals) ? row.recentCurrentTotals.slice(-6) : [];
+    state.sourceSnapshots = Array.isArray(row.sourceSnapshots) ? row.sourceSnapshots : [];
     renderInputs();
     bindAssetInputs();
     render();
@@ -1157,6 +1222,104 @@
     const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
 
     return { mdd, sharpe };
+  }
+
+  function calculateSourceSnapshotRisk(rows) {
+    if (!Array.isArray(rows) || rows.length < 2) return null;
+    const values = rows.map((row) => Number(row.total)).filter((value) => Number.isFinite(value) && value > 0);
+    if (values.length < 2) return null;
+
+    let peak = values[0];
+    let mdd = 0;
+    values.forEach((value) => {
+      peak = Math.max(peak, value);
+      mdd = Math.min(mdd, peak > 0 ? value / peak - 1 : 0);
+    });
+
+    const returns = [];
+    const intervals = [];
+    for (let index = 1; index < rows.length; index += 1) {
+      const prev = Number(rows[index - 1].total);
+      const next = Number(rows[index].total);
+      if (Number.isFinite(prev) && prev > 0 && Number.isFinite(next) && next > 0) {
+        returns.push(next / prev - 1);
+      }
+      const prevDate = rows[index - 1].date instanceof Date ? rows[index - 1].date : new Date(rows[index - 1].date);
+      const nextDate = rows[index].date instanceof Date ? rows[index].date : new Date(rows[index].date);
+      const intervalDays = (nextDate - prevDate) / (24 * 60 * 60 * 1000);
+      if (Number.isFinite(intervalDays) && intervalDays > 0) intervals.push(intervalDays);
+    }
+    if (returns.length < 2) return { mdd, sharpe: 0, count: rows.length };
+
+    const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+    const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, returns.length - 1);
+    const std = Math.sqrt(variance);
+    const avgInterval = intervals.length > 0 ? intervals.reduce((sum, value) => sum + value, 0) / intervals.length : 30;
+    const periodsPerYear = Math.max(1, 365 / avgInterval);
+    const sharpe = std > 0 ? (mean / std) * Math.sqrt(periodsPerYear) : 0;
+    return { mdd, sharpe, count: rows.length };
+  }
+
+  function getSourceRiskForWindow(days, endIndex = state.sourceSnapshots.length - 1) {
+    const snapshots = state.sourceSnapshots || [];
+    if (endIndex < 1 || !snapshots[endIndex]) return null;
+    const endDate = snapshots[endIndex].date instanceof Date ? snapshots[endIndex].date : new Date(snapshots[endIndex].date);
+    const startTime = endDate.getTime() - days * 24 * 60 * 60 * 1000;
+    const rows = snapshots
+      .slice(0, endIndex + 1)
+      .filter((row) => {
+        const date = row.date instanceof Date ? row.date : new Date(row.date);
+        return date.getTime() >= startTime && date.getTime() <= endDate.getTime();
+      });
+    return calculateSourceSnapshotRisk(rows);
+  }
+
+  function formatSignedPoint(value) {
+    if (!Number.isFinite(value)) return "--";
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${value.toFixed(1)}%p`;
+  }
+
+  function formatSignedNumber(value) {
+    if (!Number.isFinite(value)) return "--";
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${value.toFixed(3)}`;
+  }
+
+  function renderSourceRiskRows() {
+    const tbody = document.getElementById("sourceRiskRows");
+    const status = document.getElementById("sourceRiskStatus");
+    if (!tbody) return;
+    const snapshots = state.sourceSnapshots || [];
+    if (snapshots.length < 2) {
+      tbody.innerHTML = `<tr><td colspan="6">시트 원본 스냅샷이 부족합니다.</td></tr>`;
+      if (status) status.textContent = "시트 원본 스냅샷 기준";
+      return;
+    }
+
+    const latest = snapshots[snapshots.length - 1];
+    if (status) status.textContent = `최신 원본값: ${latest.dateLabel || formatShortDate(latest.date)}`;
+    tbody.innerHTML = [30, 60, 180]
+      .map((days) => {
+        const current = getSourceRiskForWindow(days);
+        const previous = getSourceRiskForWindow(days, snapshots.length - 2);
+        if (!current) {
+          return `<tr><th>${days}일</th><td colspan="5">관측값 부족</td></tr>`;
+        }
+        const mddDelta = previous ? (current.mdd - previous.mdd) * 100 : NaN;
+        const sharpeDelta = previous ? current.sharpe - previous.sharpe : NaN;
+        return `
+          <tr>
+            <th>${days}일</th>
+            <td>${formatRiskPercent(current.mdd)}</td>
+            <td>${formatSignedPoint(mddDelta)}</td>
+            <td>${current.sharpe.toFixed(3)}</td>
+            <td>${formatSignedNumber(sharpeDelta)}</td>
+            <td>${current.count}개</td>
+          </tr>
+        `;
+      })
+      .join("");
   }
 
   function applyCalendarVisibility(visible) {
