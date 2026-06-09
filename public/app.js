@@ -1323,16 +1323,15 @@
   function buildSourceRiskTrendPoints() {
     return (state.sourceSnapshots || [])
       .map((snapshot) => {
-        const total = Number(snapshot.total) || 0;
-        if (total <= 0) return null;
+        const invested = Number(snapshot.invested) || 0;
+        if (invested <= 0) return null;
         const weights = {
-          SPY: Number(snapshot.SPY || 0) / total,
-          QQQ: Number(snapshot.QQQ || 0) / total,
-          SCHD: Number(snapshot.SCHD || 0) / total,
-          GLD: Number(snapshot.GLD || 0) / total,
+          SPY: Number(snapshot.SPY || 0) / invested,
+          QQQ: Number(snapshot.QQQ || 0) / invested,
+          SCHD: Number(snapshot.SCHD || 0) / invested,
+          GLD: Number(snapshot.GLD || 0) / invested,
         };
-        const cashWeight = Number(snapshot.cash || 0) / total;
-        const metrics = calculateRiskMetrics(buildPortfolioIndexSeriesWithCash(weights, cashWeight));
+        const metrics = calculateRiskMetrics(buildPortfolioIndexSeriesWithCash(weights, 0));
         return {
           date: snapshot.dateLabel || formatShortDate(snapshot.date),
           mdd: metrics.mdd * 100,
@@ -1401,7 +1400,7 @@
 
     const latest = snapshots[snapshots.length - 1];
     const points = buildSourceRiskTrendPoints();
-    if (status) status.textContent = `원본 날짜별 비중 기준 / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
+    if (status) status.textContent = `원본 날짜별 투자자산 비중 기준 (현금 제외) / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
     container.innerHTML =
       renderSourceRiskChart("MDD 변화", points, "mdd", (value) => `${value.toFixed(1)}%`, "#b94a48") +
       renderSourceRiskChart("Sharpe 변화", points, "sharpe", (value) => value.toFixed(3), "#147c72");
