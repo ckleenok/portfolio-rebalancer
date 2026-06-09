@@ -1059,6 +1059,52 @@ input:focus {
   font-size: 15px;
 }
 
+.source-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.source-risk-card,
+.source-risk-empty {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.source-risk-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.source-risk-head strong {
+  font-size: 14px;
+}
+
+.source-risk-head span,
+.source-risk-meta,
+.source-risk-axis,
+.source-risk-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-risk-svg {
+  display: block;
+  width: 100%;
+  height: 64px;
+}
+
+.source-risk-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
 .report-table {
   width: 100%;
   border-collapse: collapse;
@@ -1216,7 +1262,8 @@ input:focus {
 
   .summary-grid,
   .cagr-grid,
-  .report-grid {
+  .report-grid,
+  .source-risk-grid {
     grid-template-columns: 1fr;
   }
 

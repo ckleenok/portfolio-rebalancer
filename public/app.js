@@ -1198,6 +1198,40 @@
     });
   }
 
+  function buildPortfolioIndexSeriesWithCash(weightsByTicker, cashWeight = 0) {
+    const tickers = Object.keys(weightsByTicker || {}).filter((ticker) => Number(weightsByTicker[ticker]) > 0);
+    if (tickers.length === 0) return [];
+    if (tickers.some((ticker) => !Array.isArray(state.trend30[ticker]?.points) || state.trend30[ticker].points.length < 2)) {
+      return [];
+    }
+
+    const baseByTicker = {};
+    const mapByTicker = {};
+    tickers.forEach((ticker) => {
+      const points = state.trend30[ticker].points;
+      baseByTicker[ticker] = Number(points[0].close);
+      mapByTicker[ticker] = new Map(
+        points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+
+    const baseDates = state.trend30[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => mapByTicker[ticker].has(date)));
+    if (commonDates.length < 2) return [];
+
+    return commonDates.map((date) => {
+      const riskyValue = tickers.reduce((sum, ticker) => {
+        const base = baseByTicker[ticker];
+        const close = mapByTicker[ticker].get(date);
+        const ratio = Number.isFinite(base) && base > 0 && Number.isFinite(close) ? close / base : 0;
+        return sum + (Number(weightsByTicker[ticker]) || 0) * ratio;
+      }, 0);
+      return { date, close: (Math.max(0, Number(cashWeight) || 0) + riskyValue) * 100 };
+    });
+  }
+
   function calculateRiskMetrics(series) {
     if (!Array.isArray(series) || series.length < 2) return { mdd: 0, sharpe: 0 };
     const values = series.map((point) => Number(point.close)).filter((v) => Number.isFinite(v) && v > 0);
@@ -1286,40 +1320,91 @@
     return `${sign}${value.toFixed(3)}`;
   }
 
+  function buildSourceRiskTrendPoints() {
+    return (state.sourceSnapshots || [])
+      .map((snapshot) => {
+        const total = Number(snapshot.total) || 0;
+        if (total <= 0) return null;
+        const weights = {
+          SPY: Number(snapshot.SPY || 0) / total,
+          QQQ: Number(snapshot.QQQ || 0) / total,
+          SCHD: Number(snapshot.SCHD || 0) / total,
+          GLD: Number(snapshot.GLD || 0) / total,
+        };
+        const cashWeight = Number(snapshot.cash || 0) / total;
+        const metrics = calculateRiskMetrics(buildPortfolioIndexSeriesWithCash(weights, cashWeight));
+        return {
+          date: snapshot.dateLabel || formatShortDate(snapshot.date),
+          mdd: metrics.mdd * 100,
+          sharpe: metrics.sharpe,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function renderSourceRiskChart(title, points, field, formatter, color) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return `
+        <div class="source-risk-card">
+          <div class="source-risk-head"><strong>${title}</strong><span>데이터 부족</span></div>
+          <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none"></svg>
+          <div class="source-risk-meta">원본 스냅샷 2개 이상 필요</div>
+        </div>
+      `;
+    }
+    const series = points.map((point) => ({ date: point.date, close: Number(point[field]) }));
+    const model = buildTrendCoordinates(series, 280, 64, 5);
+    if (!model) {
+      return `
+        <div class="source-risk-card">
+          <div class="source-risk-head"><strong>${title}</strong><span>데이터 부족</span></div>
+          <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none"></svg>
+          <div class="source-risk-meta">계산 가능한 값 없음</div>
+        </div>
+      `;
+    }
+    const pathData = model.coords
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+      .join(" ");
+    const latest = series[series.length - 1].close;
+    const first = series[0].close;
+    const delta = latest - first;
+    const deltaLabel = field === "mdd" ? formatSignedPoint(delta) : formatSignedNumber(delta);
+    return `
+      <div class="source-risk-card">
+        <div class="source-risk-head">
+          <strong>${title}</strong>
+          <span>${formatter(latest)} / ${deltaLabel}</span>
+        </div>
+        <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none">
+          <line x1="5" y1="${model.coords[0].y.toFixed(1)}" x2="275" y2="${model.coords[0].y.toFixed(1)}" stroke="#c6cfdb" stroke-width="1" stroke-dasharray="4 3"></line>
+          <path d="${pathData}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <div class="source-risk-axis">
+          <span>${series[0].date}</span>
+          <span>${series[series.length - 1].date}</span>
+        </div>
+      </div>
+    `;
+  }
+
   function renderSourceRiskRows() {
-    const tbody = document.getElementById("sourceRiskRows");
+    const container = document.getElementById("sourceRiskCharts");
     const status = document.getElementById("sourceRiskStatus");
-    if (!tbody) return;
+    if (!container) return;
     const snapshots = state.sourceSnapshots || [];
     if (snapshots.length < 2) {
-      tbody.innerHTML = `<tr><td colspan="6">시트 원본 스냅샷이 부족합니다.</td></tr>`;
+      container.innerHTML = `<div class="source-risk-empty">시트 원본 스냅샷이 부족합니다.</div>`;
       if (status) status.textContent = "시트 원본 스냅샷 기준";
       return;
     }
 
     const latest = snapshots[snapshots.length - 1];
-    if (status) status.textContent = `최신 원본값: ${latest.dateLabel || formatShortDate(latest.date)}`;
-    tbody.innerHTML = [30, 60, 180]
-      .map((days) => {
-        const current = getSourceRiskForWindow(days);
-        const previous = getSourceRiskForWindow(days, snapshots.length - 2);
-        if (!current) {
-          return `<tr><th>${days}일</th><td colspan="5">관측값 부족</td></tr>`;
-        }
-        const mddDelta = previous ? (current.mdd - previous.mdd) * 100 : NaN;
-        const sharpeDelta = previous ? current.sharpe - previous.sharpe : NaN;
-        return `
-          <tr>
-            <th>${days}일</th>
-            <td>${formatRiskPercent(current.mdd)}</td>
-            <td>${formatSignedPoint(mddDelta)}</td>
-            <td>${current.sharpe.toFixed(3)}</td>
-            <td>${formatSignedNumber(sharpeDelta)}</td>
-            <td>${current.count}개</td>
-          </tr>
-        `;
-      })
-      .join("");
+    const points = buildSourceRiskTrendPoints();
+    if (status) status.textContent = `원본 날짜별 비중 기준 / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
+    container.innerHTML =
+      renderSourceRiskChart("MDD 변화", points, "mdd", (value) => `${value.toFixed(1)}%`, "#b94a48") +
+      renderSourceRiskChart("Sharpe 변화", points, "sharpe", (value) => value.toFixed(3), "#147c72");
   }
 
   function applyCalendarVisibility(visible) {
