@@ -217,6 +217,97 @@ body.institutional-hidden .institutional-rail {
   font-weight: 800;
 }
 
+.primary-button {
+  min-height: 36px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.insight-panel {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+
+.insight-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.insight-actions span,
+.insight-empty,
+.insight-error,
+.insight-caveats {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.insight-output {
+  margin-top: 12px;
+}
+
+.insight-summary {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.insight-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.insight-columns h3 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.insight-columns ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.insight-columns li {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.insight-caveats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.insight-caveats span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #fbfcfd;
+}
+
+.insight-error {
+  color: var(--red);
+}
+
 .market-pulse {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -471,6 +562,13 @@ label > span {
   font-size: 12px;
 }
 
+.target-editor-title {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .target-actions {
   display: flex;
   align-items: center;
@@ -489,6 +587,76 @@ label > span {
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.target-contribution-breakdown {
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 7px;
+}
+
+.target-contribution-title,
+.target-contribution-row,
+.target-contribution-ticker {
+  display: flex;
+  align-items: center;
+}
+
+.target-contribution-title {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.target-contribution-title strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.target-contribution-list {
+  display: grid;
+  gap: 5px;
+}
+
+.target-contribution-row {
+  display: grid;
+  grid-template-columns: minmax(42px, 1fr) 56px 56px;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.target-contribution-ticker {
+  min-width: 44px;
+  gap: 4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.target-contribution-ticker i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.target-contribution-row strong {
+  color: var(--ink);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.target-contribution-row em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  text-align: right;
 }
 
 .window-toggle {
@@ -1040,10 +1208,6 @@ input:focus {
   margin-top: 5px;
 }
 
-.report-table-wrap {
-  overflow-x: auto;
-}
-
 .report-subsection {
   margin-top: 16px;
   padding-top: 14px;
@@ -1103,35 +1267,6 @@ input:focus {
   display: flex;
   justify-content: space-between;
   margin-top: 4px;
-}
-
-.report-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.report-table th,
-.report-table td {
-  border-top: 1px solid var(--line);
-  padding: 10px 8px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.report-table th:first-child,
-.report-table td:first-child {
-  text-align: left;
-}
-
-.report-table thead th {
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.report-table tbody th {
-  color: var(--ink);
-  font-weight: 700;
 }
 
 .allocation-row {
@@ -1269,6 +1404,15 @@ input:focus {
 
   .market-pulse {
     grid-template-columns: 1fr;
+  }
+
+  .insight-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .workbench {

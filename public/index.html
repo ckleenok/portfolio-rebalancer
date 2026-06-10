@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260609-source-risk-chart-02" />
+    <link rel="stylesheet" href="./styles.css?v=20260610-insights-10" />
   </head>
   <body>
     <main class="app-shell">
@@ -35,6 +35,20 @@
           <button id="toggleCalendarButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide Calendar" aria-label="Hide Calendar">
             ◀
           </button>
+        </div>
+      </section>
+
+      <section class="insight-panel" aria-label="AI portfolio insights">
+        <div class="panel-title">
+          <h2>AI Insight</h2>
+          <span id="insightStatus">버튼을 누르면 현재 화면 기준으로 분석합니다</span>
+        </div>
+        <div class="insight-actions">
+          <button id="generateInsightButton" class="primary-button" type="button">Generate Insight</button>
+          <span id="insightGeneratedAt">Not generated</span>
+        </div>
+        <div id="insightOutput" class="insight-output">
+          <div class="insight-empty">Findings and suggestions will appear here.</div>
         </div>
       </section>
 
@@ -90,6 +104,18 @@
             <strong id="shortMetric">6개월</strong>
             <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="Target months" />
           </div>
+          <div class="target-editor-title">목표 비중 (%)</div>
+          <div class="target-grid">
+            <label class="target-input"><b>GLD</b><input id="target-GLD" type="text" inputmode="decimal" value="41" /></label>
+            <label class="target-input"><b>SCHD</b><input id="target-SCHD" type="text" inputmode="decimal" value="7" /></label>
+            <label class="target-input"><b>SPY</b><input id="target-SPY" type="text" inputmode="decimal" value="22" /></label>
+            <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="30" /></label>
+          </div>
+          <div class="target-actions">
+            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
+            <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
+          </div>
+          <div id="targetSaveStatus" class="target-save-status"></div>
         </div>
         <div class="metric">
           <span>현재 평가금</span>
@@ -108,18 +134,8 @@
           </div>
 </div>
         <div class="metric">
-          <span>목표 비중 (%)</span>
-          <div class="target-grid">
-            <label class="target-input"><b>GLD</b><input id="target-GLD" type="text" inputmode="decimal" value="41" /></label>
-            <label class="target-input"><b>SCHD</b><input id="target-SCHD" type="text" inputmode="decimal" value="7" /></label>
-            <label class="target-input"><b>SPY</b><input id="target-SPY" type="text" inputmode="decimal" value="22" /></label>
-            <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="30" /></label>
-          </div>
-          <div class="target-actions">
-            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
-            <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
-          </div>
-          <div id="targetSaveStatus" class="target-save-status"></div>
+          <span>목표 지표</span>
+          <div id="targetContributionBreakdown" class="target-contribution-breakdown" aria-label="Contribution by ticker"></div>
           <div class="window-toggle" role="group" aria-label="Risk window">
             <button id="window30Button" type="button" class="window-button active">30D</button>
             <button id="window90Button" type="button" class="window-button">90D</button>
@@ -196,19 +212,6 @@
             <em id="reportNextDetail">목표 대비 차이 --</em>
           </div>
         </div>
-        <div class="report-table-wrap">
-          <table class="report-table">
-            <thead>
-              <tr>
-                <th>구분</th>
-                <th>현재</th>
-                <th>실제 조정 후</th>
-                <th>목표</th>
-              </tr>
-            </thead>
-            <tbody id="monthlyReportRows"></tbody>
-          </table>
-        </div>
         <div class="report-subsection">
           <div class="panel-title compact-title">
             <h3>원본 데이터 리스크 변화</h3>
@@ -279,6 +282,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260609-source-risk-chart-02"></script>
+    <script src="./app.js?v=20260610-insights-10"></script>
   </body>
 </html>
