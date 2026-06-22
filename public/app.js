@@ -18,6 +18,8 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/institutional-holdings" : null;
   const ACTUAL_TRADES_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
+  const ACTUAL_TRADES_SYNC_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades-sync" : null;
   const INSIGHTS_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/insights" : null;
   const state = {
@@ -703,6 +705,29 @@
       render();
     } catch {
       // keep local fallback
+    }
+  }
+
+  async function syncActualTradesFromTransactionRecord() {
+    if (!ACTUAL_TRADES_SYNC_URL) return;
+    try {
+      const response = await fetch(ACTUAL_TRADES_SYNC_URL, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const tickers = payload?.tickers || {};
+      let changed = false;
+      for (const ticker of ACTUAL_TRADE_TICKERS) {
+        if (Object.prototype.hasOwnProperty.call(tickers, ticker)) {
+          state.actualTrades[ticker] = Number(tickers[ticker]) || 0;
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveActualTrades();
+        render();
+      }
+    } catch {
+      // keep whatever was already loaded
     }
   }
 
@@ -2183,7 +2208,7 @@
     loadTrendWindow();
     loadMarketPulse();
     loadInstitutionalHoldings();
-    loadActualTradesFromServer();
+    loadActualTradesFromServer().then(syncActualTradesFromTransactionRecord);
   }
 
   if (typeof module !== "undefined") {

@@ -697,6 +697,63 @@ async function fetchMarketPulse() {
   return { fearGreed, buffett, vix };
 }
 
+const TRANSACTION_RECORD_SUPABASE_URL =
+  process.env.TRANSACTION_RECORD_SUPABASE_URL || "https://gicmktddjxjqzxojkwtf.supabase.co";
+const TRANSACTION_RECORD_SUPABASE_KEY =
+  process.env.TRANSACTION_RECORD_SUPABASE_KEY || "sb_publishable_uvd-5R9n45gwlSiGdUfCSg_3ruaOIyf";
+
+// Korean fund name -> US ticker (category tag, mirrors transaction-record/dashboard/src/config/securityMappings.js)
+const SECURITY_TICKER_MAP = {
+  "ACE KRX금현물": "GLD",
+  "TIGER 미국테크TOP10 INDXX": "QQQ",
+  "KODEX 미국S&P500": "SPY",
+  "KODEX 미국나스닥100": "QQQ",
+  "KODEX 미국AI반도체TOP3플러스": "QQQ",
+  "TIGER 구글밸류체인": "QQQ",
+};
+
+function actualTradesSyncCutoffDate(now) {
+  const day = now.getUTCDate();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const cutoff = day >= 26 ? new Date(Date.UTC(year, month, 26)) : new Date(Date.UTC(year, month - 1, 26));
+  return cutoff.toISOString().slice(0, 10);
+}
+
+async function fetchActualTradesSync() {
+  const from = actualTradesSyncCutoffDate(new Date());
+  const to = new Date().toISOString().slice(0, 10);
+
+  const url = new URL(`${TRANSACTION_RECORD_SUPABASE_URL}/rest/v1/trade_orders`);
+  url.searchParams.set("select", "trade_date,security_name,side,status,quantity,unit_price");
+  url.searchParams.set("trade_date", `gte.${from}`);
+  url.searchParams.set("status", "eq.completed");
+
+  const supaResponse = await fetch(url, {
+    headers: {
+      apikey: TRANSACTION_RECORD_SUPABASE_KEY,
+      authorization: `Bearer ${TRANSACTION_RECORD_SUPABASE_KEY}`,
+    },
+  });
+  if (!supaResponse.ok) throw new Error(`Supabase ${supaResponse.status}`);
+  const rows = await supaResponse.json();
+
+  const tickerTotals = {};
+  for (const row of rows) {
+    const ticker = SECURITY_TICKER_MAP[row.security_name];
+    if (!ticker) continue;
+    const amountKrw = Number(row.quantity || 0) * Number(row.unit_price || 0);
+    const signedAmount = row.side === "sell" ? -amountKrw : amountKrw;
+    tickerTotals[ticker] = (tickerTotals[ticker] || 0) + signedAmount;
+  }
+
+  const tickers = Object.fromEntries(
+    Object.entries(tickerTotals).map(([ticker, krw]) => [ticker, Math.round(krw / 10000)]),
+  );
+
+  return { from, to, tickers };
+}
+
 function calculateMovingAverageCagr(monthlyCloses, months = 120) {
   const slice = monthlyCloses.slice(-(months + 1));
   const returns = [];
@@ -935,6 +992,25 @@ const server = http.createServer(async (request, response) => {
         response,
         error.status || 500,
         JSON.stringify({ error: error.message || "Insight generation failed" }),
+        "application/json; charset=utf-8",
+      );
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/actual-trades-sync") {
+    if (request.method !== "GET") {
+      send(response, 405, JSON.stringify({ error: "Method not allowed" }), "application/json; charset=utf-8");
+      return;
+    }
+    try {
+      const result = await fetchActualTradesSync();
+      send(response, 200, JSON.stringify(result), "application/json; charset=utf-8");
+    } catch (error) {
+      send(
+        response,
+        200,
+        JSON.stringify({ from: "", to: "", tickers: {}, warning: error.message }),
         "application/json; charset=utf-8",
       );
     }
