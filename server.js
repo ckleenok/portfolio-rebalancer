@@ -710,6 +710,7 @@ const SECURITY_TICKER_MAP = {
   "KODEX 미국나스닥100": "QQQ",
   "KODEX 미국AI반도체TOP3플러스": "QQQ",
   "TIGER 구글밸류체인": "QQQ",
+  "TIGER 미국배당다우존스": "SCHD",
 };
 
 function actualTradesSyncCutoffDate(now) {
