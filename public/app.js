@@ -38,6 +38,7 @@
       QQQ: 0.1,
     },
     actualTrades: {},
+    manualTrades: {},
     sourceSnapshots: [],
   };
 
@@ -52,6 +53,7 @@
   const INSTITUTIONAL_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-institutional-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
   const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
+  const MANUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-manual-trades-v1";
   const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
   const ACTUAL_TRADE_TICKERS = ["GLD", "SCHD", "SPY", "QQQ"];
 
@@ -591,6 +593,7 @@
       .forEach((row) => {
         const isSell = row.trade < 0;
         const actualTrade = Number(state.actualTrades[row.ticker] ?? 0);
+        const manualTrade = Number(state.manualTrades[row.ticker] ?? 0);
         const card = document.createElement("div");
         card.className = `buy-card ${isSell ? "sell-card" : ""}`;
         card.innerHTML = `
@@ -601,6 +604,11 @@
             <label class="actual-trade-entry">
               <span>실제 조정</span>
               <input data-actual-ticker="${row.ticker}" type="text" inputmode="numeric" value="${Math.round(actualTrade).toLocaleString("ko-KR")}" />
+              <em>만원</em>
+            </label>
+            <label class="actual-trade-entry">
+              <span>다른 소스</span>
+              <input data-manual-ticker="${row.ticker}" type="text" inputmode="numeric" value="${Math.round(manualTrade).toLocaleString("ko-KR")}" />
               <em>만원</em>
             </label>
           </div>
@@ -639,11 +647,16 @@
     renderWindowToggle();
   }
 
+  function combinedActualTrade(ticker) {
+    return Number(state.actualTrades[ticker] || 0) + Number(state.manualTrades[ticker] || 0);
+  }
+
   function saveActualTrades() {
     try {
       const now = new Date();
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+      localStorage.setItem(MANUAL_TRADES_STORAGE_KEY, JSON.stringify(state.manualTrades));
       localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, ym);
     } catch {
       // ignore storage errors
@@ -665,15 +678,26 @@
       const savedYm = localStorage.getItem(ACTUAL_TRADES_MONTH_KEY);
       if (savedYm !== currentYm) {
         state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        state.manualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
         localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+        localStorage.setItem(MANUAL_TRADES_STORAGE_KEY, JSON.stringify(state.manualTrades));
         localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, currentYm);
         return;
       }
       const raw = localStorage.getItem(ACTUAL_TRADES_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return;
-      state.actualTrades = normalizeActualTrades(parsed);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          state.actualTrades = normalizeActualTrades(parsed);
+        }
+      }
+      const manualRaw = localStorage.getItem(MANUAL_TRADES_STORAGE_KEY);
+      if (manualRaw) {
+        const manualParsed = JSON.parse(manualRaw);
+        if (manualParsed && typeof manualParsed === "object") {
+          state.manualTrades = normalizeActualTrades(manualParsed);
+        }
+      }
     } catch {
       // ignore parse/storage errors
     }
@@ -696,11 +720,13 @@
       if (!serverMonth) return;
       if (serverMonth !== currentYm) {
         state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        state.manualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
         saveActualTrades();
         render();
         return;
       }
       state.actualTrades = normalizeActualTrades(payload?.trades || {});
+      state.manualTrades = normalizeActualTrades(payload?.manualTrades || {});
       saveActualTrades();
       render();
     } catch {
@@ -740,6 +766,7 @@
     const payload = {
       month: currentYearMonth(),
       trades: normalizeActualTrades(state.actualTrades),
+      manualTrades: normalizeActualTrades(state.manualTrades),
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -763,6 +790,10 @@
           SCHD: String(payload.trades.SCHD ?? 0),
           SPY: String(payload.trades.SPY ?? 0),
           QQQ: String(payload.trades.QQQ ?? 0),
+          manualGLD: String(payload.manualTrades.GLD ?? 0),
+          manualSCHD: String(payload.manualTrades.SCHD ?? 0),
+          manualSPY: String(payload.manualTrades.SPY ?? 0),
+          manualQQQ: String(payload.manualTrades.QQQ ?? 0),
         });
         const fallback = await fetch(`${ACTUAL_TRADES_URL}?${params.toString()}`, { method: "GET" });
         if (!fallback.ok) throw new Error(`HTTP ${response.status}`);
@@ -788,6 +819,14 @@
         renderTradeSummary(result);
       });
     });
+    document.querySelectorAll("[data-manual-ticker]").forEach((input) => {
+      input.addEventListener("input", (event) => {
+        const ticker = event.target.dataset.manualTicker;
+        state.manualTrades[ticker] = parseMoney(event.target.value);
+        saveActualTrades();
+        renderTradeSummary(result);
+      });
+    });
   }
 
   function renderTradeSummary(result) {
@@ -795,8 +834,8 @@
     if (!warning) return;
     const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
     const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
-    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, Number(state.actualTrades[row.ticker] || 0)), 0);
-    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, combinedActualTrade(row.ticker)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -combinedActualTrade(row.ticker)), 0);
     warning.hidden = false;
     warning.textContent =
       `계획: 총 매수 ${formatMoney(plannedBuy)}, 총 축소 ${formatMoney(plannedSell)}, 순투입 ${formatMoney(state.contribution)} | ` +
@@ -1000,8 +1039,8 @@
     const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
     const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
     const plannedNet = plannedBuy - plannedSell;
-    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, Number(state.actualTrades[row.ticker] || 0)), 0);
-    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, combinedActualTrade(row.ticker)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -combinedActualTrade(row.ticker)), 0);
     const actualNet = actualBuy - actualSell;
     const netGap = actualNet - plannedNet;
     const adherence = plannedNet !== 0 ? Math.max(0, Math.min(999, (actualNet / plannedNet) * 100)) : 0;
@@ -1015,7 +1054,7 @@
 
     const actualAssets = normalizedAssets.map((asset) => ({
       ...asset,
-      current: Math.max(0, asset.current + Number(state.actualTrades[asset.ticker] || 0)),
+      current: Math.max(0, asset.current + combinedActualTrade(asset.ticker)),
     }));
     const actualWeights = buildWeightsFromAssets(actualAssets);
 

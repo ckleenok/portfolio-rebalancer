@@ -1044,6 +1044,7 @@ const server = http.createServer(async (request, response) => {
             : {
                 month: "",
                 trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+                manualTrades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
                 updatedAt: null,
                 storage: process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN ? "kv" : "none",
               },
@@ -1058,9 +1059,11 @@ const server = http.createServer(async (request, response) => {
         const payload = await readJsonBody(request);
         const month = parseMonth(payload?.month);
         const trades = normalizeActualTrades(payload?.trades);
+        const manualTrades = normalizeActualTrades(payload?.manualTrades);
         const record = {
           month,
           trades,
+          manualTrades,
           updatedAt: new Date().toISOString(),
         };
         let storage = "tmp";

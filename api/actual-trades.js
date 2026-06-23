@@ -114,6 +114,12 @@ module.exports = async function handler(request, response) {
             SPY: request.query?.SPY,
             QQQ: request.query?.QQQ,
           }),
+          manualTrades: normalizeTrades({
+            GLD: request.query?.manualGLD,
+            SCHD: request.query?.manualSCHD,
+            SPY: request.query?.manualSPY,
+            QQQ: request.query?.manualQQQ,
+          }),
           updatedAt: new Date().toISOString(),
         };
         let storage = "tmp";
@@ -136,6 +142,7 @@ module.exports = async function handler(request, response) {
             : {
                 month: "",
                 trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+                manualTrades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
                 updatedAt: null,
                 storage: process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN ? "kv" : "none",
               },
@@ -146,6 +153,7 @@ module.exports = async function handler(request, response) {
         JSON.stringify({
           month: "",
           trades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
+          manualTrades: { GLD: 0, SCHD: 0, SPY: 0, QQQ: 0 },
           updatedAt: null,
           storage: "none",
           warning: error.message,
@@ -163,6 +171,7 @@ module.exports = async function handler(request, response) {
       const record = {
         month,
         trades: normalizeTrades(body?.trades),
+        manualTrades: normalizeTrades(body?.manualTrades),
         updatedAt: new Date().toISOString(),
       };
 
