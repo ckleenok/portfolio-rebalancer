@@ -6,3 +6,4 @@ npm-debug.log*
 tunnel.out
 tunnel.err
 data/actual-trades.json
+.vercel
