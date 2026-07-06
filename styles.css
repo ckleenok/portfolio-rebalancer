@@ -1409,42 +1409,69 @@ input:focus {
 
 .simulation-list {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(var(--simulation-count, 4), minmax(240px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
 }
 
 .simulation-step {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfd;
+  min-width: 240px;
+  padding: 12px;
+  scroll-snap-align: start;
 }
 
-.simulation-step summary {
-  display: grid;
-  grid-template-columns: 86px 1fr 112px;
+.simulation-step-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  min-height: 48px;
-  padding: 10px 12px;
-  cursor: pointer;
-  list-style: none;
 }
 
-.simulation-step summary::-webkit-details-marker {
-  display: none;
+.simulation-step-head strong {
+  font-size: 15px;
 }
 
-.simulation-step summary span,
-.simulation-step summary em,
-.simulation-detail {
+.simulation-step-head em,
+.simulation-trades {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-style: normal;
 }
 
-.simulation-detail {
-  border-top: 1px solid var(--line);
-  padding: 10px 12px 12px;
-  line-height: 1.6;
+.simulation-trades {
+  min-height: 34px;
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
+.simulation-weights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.simulation-weight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.simulation-weight-chip b {
+  color: var(--text);
 }
 
 @media (max-width: 860px) {
@@ -1486,9 +1513,8 @@ input:focus {
     grid-template-columns: 64px 1fr 70px;
   }
 
-  .simulation-step summary {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .simulation-list {
+    grid-template-columns: repeat(var(--simulation-count, 4), minmax(220px, 78vw));
   }
 
   .holdings-chart {

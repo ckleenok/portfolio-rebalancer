@@ -1348,10 +1348,10 @@
     summary.textContent = `${state.planMonths}개월차에 목표 비중 도달`;
 
     list.innerHTML = "";
+    list.style.setProperty("--simulation-count", String(months.length || 1));
     months.forEach((month) => {
-      const item = document.createElement("details");
+      const item = document.createElement("article");
       item.className = "simulation-step";
-      item.open = true;
 
       const trades = month.rows
         .filter((row) => Math.abs(row.trade) > 0.4)
@@ -1360,16 +1360,23 @@
         .join(" · ");
 
       const weights = month.rows
-        .map((row) => `${row.ticker} ${formatPercent(row.afterWeight)}`)
-        .join(" / ");
+        .map(
+          (row) => `
+            <span class="simulation-weight-chip">
+              <b>${escapeHtml(row.ticker)}</b>
+              ${escapeHtml(formatPercent(row.afterWeight))}
+            </span>
+          `,
+        )
+        .join("");
 
       item.innerHTML = `
-        <summary>
+        <div class="simulation-step-head">
           <strong>${month.month}개월차</strong>
-          <span>${trades || "거래 없음"}</span>
           <em>최대 차이 ${(month.maxGap * 100).toFixed(2)}%p</em>
-        </summary>
-        <div class="simulation-detail">${weights}</div>
+        </div>
+        <div class="simulation-trades">${escapeHtml(trades || "거래 없음")}</div>
+        <div class="simulation-weights">${weights}</div>
       `;
       list.appendChild(item);
     });
