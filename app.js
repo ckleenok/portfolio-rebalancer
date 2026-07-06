@@ -20,6 +20,8 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
   const ACTUAL_TRADES_SYNC_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades-sync" : null;
+  const AI_ADVICE_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/insights" : null;
   const state = {
     contribution: 400,
     planMonths: 6,
@@ -38,6 +40,7 @@
     actualTrades: {},
     manualTrades: {},
     sourceSnapshots: [],
+    aiAdvice: null,
   };
 
   const ASSET_COLORS = {
@@ -1053,19 +1056,86 @@
     return notes;
   }
 
-  function renderBandAdvice(normalizedAssets) {
-    const output = document.getElementById("adviceOutput");
-    const status = document.getElementById("adviceStatus");
-    if (!output) return;
+  function buildAdviceContext(normalizedAssets) {
     const total = normalizedAssets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
     const currentWeights = Object.fromEntries(
       normalizedAssets.map((asset) => [asset.ticker, total > 0 ? Math.max(0, Number(asset.current) || 0) / total : 0]),
     );
     const rows = buildAllocationAdviceRows(normalizedAssets, currentWeights);
-    const allWithinBands = rows.every((row) => row.bandStatus === "Within Band");
-    if (status) status.textContent = allWithinBands ? "모든 자산 밴드 안" : "밴드 이탈 자산 있음";
     const summary = getAdviceSummary(rows);
     const marketNotes = getMarketOverlayNotes();
+    return {
+      total,
+      rows,
+      summary,
+      marketNotes,
+      allWithinBands: rows.every((row) => row.bandStatus === "Within Band"),
+    };
+  }
+
+  function buildAiAdvicePayload(normalizedAssets) {
+    const context = buildAdviceContext(normalizedAssets);
+    return {
+      generatedFrom: "portfolio-rebalancer-band-advice",
+      asOf: new Date().toISOString(),
+      contribution: state.contribution,
+      planMonths: state.planMonths,
+      totalCurrent: Math.round(context.total),
+      targetBands: ADVICE_POLICY,
+      ruleSummary: context.summary,
+      allocationAdvice: context.rows.map((row) => ({
+        ticker: row.ticker,
+        currentAllocation: formatAdvicePercent(row.currentWeight),
+        targetAllocation: formatAdvicePercent(row.targetWeight, 0),
+        acceptableBand: `${formatAdvicePercent(row.bandMin, 0)}-${formatAdvicePercent(row.bandMax, 0)}`,
+        differenceFromTarget: formatSignedAdvicePercent(row.differenceFromTarget),
+        bandStatus: row.bandStatus,
+        actionRecommendation: row.actionRecommendation,
+      })),
+      marketOverlay: context.marketNotes,
+      principles: [
+        "Long-term US ETF investing",
+        "Prefer DCA over market timing",
+        "SPY/QQQ are growth engines",
+        "GLD is a risk buffer and rebalancing source",
+        "SCHD is income/defensive equity, not the main growth asset",
+        "Do not suggest panic selling, all-in, leverage, or market timing",
+        "Use target bands rather than exact rigid percentages",
+      ],
+    };
+  }
+
+  function renderAiAdviceBlock() {
+    if (!state.aiAdvice) return "";
+    if (state.aiAdvice.status === "loading") {
+      return `<div class="ai-advice-block"><strong>AI 해석</strong><p>현재 밴드 계산 결과를 해석하는 중입니다...</p></div>`;
+    }
+    if (state.aiAdvice.status === "error") {
+      return `<div class="ai-advice-block error"><strong>AI 해석 실패</strong><p>${escapeHtml(state.aiAdvice.message)}</p></div>`;
+    }
+    return `
+      <div class="ai-advice-block">
+        <strong>AI 해석</strong>
+        <p>${escapeHtml(state.aiAdvice.text)}</p>
+      </div>
+    `;
+  }
+
+  function clearAiAdvice() {
+    state.aiAdvice = null;
+    const status = document.getElementById("aiAdviceStatus");
+    if (status) status.textContent = "룰 계산 결과를 AI가 해석합니다";
+  }
+
+  function renderBandAdvice(normalizedAssets) {
+    const output = document.getElementById("adviceOutput");
+    const status = document.getElementById("adviceStatus");
+    if (!output) return;
+    const context = buildAdviceContext(normalizedAssets);
+    const rows = context.rows;
+    if (status) status.textContent = context.allWithinBands ? "모든 자산 밴드 안" : "밴드 이탈 자산 있음";
+    const summary = context.summary;
+    const marketNotes = context.marketNotes;
 
     output.innerHTML = `
       <div class="advice-summary">${escapeHtml(summary)}</div>
@@ -1114,7 +1184,42 @@
         </div>
       </div>
       <div class="advice-plain-summary">Plain Korean summary: ${escapeHtml(summary)}</div>
+      ${renderAiAdviceBlock()}
     `;
+  }
+
+  async function generateAiAdvice() {
+    const button = document.getElementById("generateAiAdviceButton");
+    const status = document.getElementById("aiAdviceStatus");
+    if (!AI_ADVICE_URL || !button) return;
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    state.aiAdvice = { status: "loading" };
+    if (status) status.textContent = "AI 해석 생성 중...";
+    button.disabled = true;
+    renderBandAdvice(normalizedAssets);
+    try {
+      const response = await fetch(AI_ADVICE_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildAiAdvicePayload(normalizedAssets)),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+      state.aiAdvice = {
+        status: "ready",
+        text: payload?.text || "AI 해석을 받았지만 표시할 문장이 없습니다.",
+      };
+      if (status) status.textContent = payload?.generatedAt ? new Date(payload.generatedAt).toLocaleString("ko-KR") : "AI 해석 완료";
+    } catch (error) {
+      const message = /OPENAI_API_KEY|configured|quota|billing/i.test(error.message)
+        ? "OpenAI API 키/결제/쿼터 설정을 확인해 주세요. 룰 기반 조언은 계속 사용할 수 있습니다."
+        : error.message;
+      state.aiAdvice = { status: "error", message };
+      if (status) status.textContent = "AI 해석 실패";
+    } finally {
+      button.disabled = false;
+      renderBandAdvice(normalizedAssets);
+    }
   }
 
   function setText(id, value) {
@@ -1260,6 +1365,7 @@
 
   function applyLatestRow(row, sourceLabel) {
     if (!row) return false;
+    clearAiAdvice();
     state.assets = state.assets.map((asset) => ({ ...asset, current: row[asset.ticker] ?? asset.current }));
     state.recentCurrentTotals = Array.isArray(row.recentCurrentTotals) ? row.recentCurrentTotals.slice(-6) : [];
     state.sourceSnapshots = Array.isArray(row.sourceSnapshots) ? row.sourceSnapshots : [];
@@ -1276,6 +1382,7 @@
         const ticker = event.target.dataset.ticker;
         const asset = state.assets.find((item) => item.ticker === ticker);
         if (asset) asset.current = parseMoney(event.target.value);
+        clearAiAdvice();
         render();
       });
     });
@@ -1290,6 +1397,7 @@
 
   function updateContribution(value) {
     state.contribution = parseMoney(value);
+    clearAiAdvice();
     render();
   }
 
@@ -1330,6 +1438,7 @@
   function updateTargetPercent(ticker, value) {
     const percent = parseMoney(value);
     state.draftTargets[ticker] = Math.max(0, percent);
+    clearAiAdvice();
     syncTargetInputs();
   }
 
@@ -1340,6 +1449,7 @@
   }
 
   function saveTargets() {
+    clearAiAdvice();
     state.assets = state.assets.map((asset) => {
       const percent = Number(state.draftTargets[asset.ticker] ?? asset.target * 100);
       return { ...asset, target: Math.max(0, percent / 100) };
@@ -1388,6 +1498,7 @@
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     state.planMonths = Math.max(1, Math.min(24, Math.round(parsed)));
+    clearAiAdvice();
     try {
       localStorage.setItem(PLAN_MONTHS_STORAGE_KEY, String(state.planMonths));
     } catch {
@@ -2433,6 +2544,10 @@
     const saveActualTradesButton = document.getElementById("saveActualTradesButton");
     if (saveActualTradesButton) {
       saveActualTradesButton.addEventListener("click", saveActualTradesToServer);
+    }
+    const generateAiAdviceButton = document.getElementById("generateAiAdviceButton");
+    if (generateAiAdviceButton) {
+      generateAiAdviceButton.addEventListener("click", generateAiAdvice);
     }
     loadSavedCalendarVisibility();
     loadSavedInstitutionalVisibility();

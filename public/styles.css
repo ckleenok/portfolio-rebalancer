@@ -232,6 +232,34 @@ body.institutional-hidden .institutional-rail {
   font-size: 12px;
 }
 
+.advice-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.advice-actions span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.primary-button {
+  min-height: 34px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .advice-output {
   margin-top: 12px;
 }
@@ -322,6 +350,31 @@ body.institutional-hidden .institutional-rail {
   color: var(--ink);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.ai-advice-block {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.ai-advice-block strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.ai-advice-block p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.ai-advice-block.error p {
+  color: var(--red);
 }
 
 .advice-disclaimer {

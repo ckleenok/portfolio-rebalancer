@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260706-band-advice-12" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-ai-interpretation-13" />
   </head>
   <body>
     <main class="app-shell">
@@ -42,6 +42,10 @@
         <div class="panel-title">
           <h2>밴드 리밸런싱 조언</h2>
           <span id="adviceStatus">10/20/30/40 목표 밴드 기준</span>
+        </div>
+        <div class="advice-actions">
+          <button id="generateAiAdviceButton" class="primary-button" type="button">AI 해석 생성</button>
+          <span id="aiAdviceStatus">룰 계산 결과를 AI가 해석합니다</span>
         </div>
         <div id="adviceOutput" class="advice-output">
           <div class="advice-empty">현재 포트폴리오 기준으로 밴드 상태를 계산합니다.</div>
@@ -279,6 +283,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260706-band-advice-12"></script>
+    <script src="./app.js?v=20260706-ai-interpretation-13"></script>
   </body>
 </html>
