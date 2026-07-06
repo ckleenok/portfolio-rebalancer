@@ -2209,7 +2209,7 @@
           <span>${row.pair}</span>
           <strong>${value}</strong>
           <svg class="corr-trend-svg" viewBox="0 0 120 44" preserveAspectRatio="none">${trendSvg}</svg>
-          <small class="corr-meta">${row.corrWindow}D corr / ${row.rollingWindow}D trend ${trendDelta}</small>
+          <small class="corr-meta">${row.corrWindow}일 상관 / ${row.rollingWindow}일 추세 ${trendDelta}</small>
         </div>`;
       })
       .join("");
