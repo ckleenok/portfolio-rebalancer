@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260706-band-insights-11" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-band-advice-12" />
   </head>
   <body>
     <main class="app-shell">
@@ -38,19 +38,15 @@
         </div>
       </section>
 
-      <section class="insight-panel" aria-label="AI portfolio insights">
+      <section class="advice-panel" aria-label="Band-based portfolio advice">
         <div class="panel-title">
-          <h2>AI Insight</h2>
-          <span id="insightStatus">버튼을 누르면 현재 화면 기준으로 분석합니다</span>
+          <h2>밴드 리밸런싱 조언</h2>
+          <span id="adviceStatus">10/20/30/40 목표 밴드 기준</span>
         </div>
-        <div class="insight-actions">
-          <button id="generateInsightButton" class="primary-button" type="button">Generate Insight</button>
-          <span id="insightGeneratedAt">Not generated</span>
+        <div id="adviceOutput" class="advice-output">
+          <div class="advice-empty">현재 포트폴리오 기준으로 밴드 상태를 계산합니다.</div>
         </div>
-        <div id="insightOutput" class="insight-output">
-          <div class="insight-empty">Findings and suggestions will appear here.</div>
-        </div>
-        <div class="insight-disclaimer">교육용 참고 정보이며, 최종 투자 결정과 책임은 사용자에게 있습니다.</div>
+        <div class="advice-disclaimer">교육용 참고 정보이며, 최종 투자 결정과 책임은 사용자에게 있습니다.</div>
       </section>
 
       <section class="market-pulse" aria-label="시장 지표">
@@ -283,6 +279,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260706-band-insights-11"></script>
+    <script src="./app.js?v=20260706-band-advice-12"></script>
   </body>
 </html>

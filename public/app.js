@@ -20,8 +20,6 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
   const ACTUAL_TRADES_SYNC_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades-sync" : null;
-  const INSIGHTS_URL =
-    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/insights" : null;
   const state = {
     contribution: 400,
     planMonths: 6,
@@ -580,6 +578,7 @@
     renderTargetSummary();
     renderCurrentMetric(result.currentTotal);
     renderTargetContributionBreakdown(normalizedAssets);
+    renderBandAdvice(normalizedAssets);
     document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
     const tradeHorizonText = document.getElementById("tradeHorizonText");
     if (tradeHorizonText) {
@@ -968,187 +967,154 @@
       .replace(/'/g, "&#039;");
   }
 
-  function buildInsightPayload() {
-    const normalizedAssets = normalizeAssetsByTarget(state.assets);
-    const result = allocateBuyOnly(normalizedAssets, state.contribution);
+  function formatAdvicePercent(value, digits = 1) {
+    if (!Number.isFinite(Number(value))) return "N/A";
+    return `${(Number(value) * 100).toFixed(digits)}%`;
+  }
+
+  function formatSignedAdvicePercent(value) {
+    if (!Number.isFinite(Number(value))) return "N/A";
+    const points = Number(value) * 100;
+    return `${points >= 0 ? "+" : ""}${points.toFixed(1)}%p`;
+  }
+
+  function getAdviceSummary(rows) {
+    const allWithinBands = rows.every((row) => row.bandStatus === "Within Band");
+    if (allWithinBands) {
+      return "Portfolio is within target bands. No urgent rebalance needed. 신규 매수금은 기존 DCA 계획대로 분산 집행하세요.";
+    }
+    const byTicker = Object.fromEntries(rows.map((row) => [row.ticker, row]));
+    const messages = [];
+    if (byTicker.QQQ?.bandStatus === "Underweight") {
+      messages.push("QQQ가 성장 엔진 대비 부족합니다. 신규 매수금은 우선 QQQ로 배정하세요.");
+    }
+    if (byTicker.SPY?.bandStatus === "Underweight") {
+      messages.push("SPY는 미국 시장 코어입니다. QQQ 우선순위를 확인한 뒤 SPY를 보강하세요.");
+    }
+    if (byTicker.GLD?.bandStatus === "Overweight") {
+      messages.push("GLD는 버리는 자산이 아니라, 조정장에서 주식을 사기 위한 완충 자산입니다. 급하게 매도할 필요는 없습니다.");
+    } else if ((byTicker.GLD?.currentWeight || 0) >= ADVICE_POLICY.GLD.target && (byTicker.GLD?.currentWeight || 0) <= ADVICE_POLICY.GLD.max) {
+      messages.push("GLD is slightly above target but still within the defensive buffer zone.");
+    } else if (byTicker.GLD?.bandStatus === "Underweight") {
+      messages.push("GLD가 낮아 하락장 방어력이 약해질 수 있습니다. 향후 신규 매수금 일부를 GLD에 배정하세요.");
+    }
+    if (byTicker.SCHD?.bandStatus === "Overweight") {
+      messages.push("SCHD가 높아 인컴/방어 주식이 성장 자산을 밀어낼 수 있습니다. 신규 매수금은 QQQ/SPY에 우선 배정하세요.");
+    } else if (byTicker.SCHD?.bandStatus === "Underweight") {
+      messages.push("SCHD는 천천히 보강하되, 인컴 목적이 크지 않다면 QQQ/SPY보다 낮은 우선순위로 두세요.");
+    }
+    messages.push("현재는 정확히 10/20/30/40을 맞추기보다 밴드 안에서 운용하는 것이 좋습니다.");
+    return messages.join(" ");
+  }
+
+  function getMarketOverlayNotes() {
+    const notes = [];
+    const buffettValue = readText("buffettValue");
+    const buffettLabel = readText("buffettLabel");
+    if (buffettValue && buffettValue !== "--") {
+      notes.push(`Buffett Indicator: ${buffettValue}${buffettLabel && buffettLabel !== "Loading..." ? ` (${buffettLabel})` : ""}.`);
+    }
+    const diagnostics = computeAdviceRiskDiagnostics();
+    const corr = diagnostics.gldSpyCorrelation;
+    if (corr?.available) {
+      const corr30 = corr.correlations?.["30d"];
+      const corr90 = corr.correlations?.["90d"];
+      const corr180 = corr.correlations?.["180d"];
+      const corr365 = corr.correlations?.["365d"];
+      const expansion = corr.expansion30dVs180d;
+      notes.push(
+        `GLD-SPY 상관계수: 30D ${Number.isFinite(corr30) ? corr30.toFixed(3) : "N/A"}, 90D ${
+          Number.isFinite(corr90) ? corr90.toFixed(3) : "N/A"
+        }, 180D ${Number.isFinite(corr180) ? corr180.toFixed(3) : "N/A"}, 365D ${
+          Number.isFinite(corr365) ? corr365.toFixed(3) : "N/A"
+        }.`,
+      );
+      if (Number.isFinite(expansion) && expansion > 0.3) {
+        notes.push("Short-term correlation spike detected. Avoid overreacting; check 90d/180d before reducing GLD further.");
+      } else if (Number.isFinite(expansion) && expansion > 0.2) {
+        notes.push("Recent GLD-SPY diversification benefit has weakened, but this may be a short-term regime effect.");
+      }
+      if (Number.isFinite(corr30) && Number.isFinite(corr180) && corr30 >= 0.55 && corr180 <= 0.45) {
+        notes.push("Recent co-movement is high, but medium-term diversification is still alive.");
+      }
+    }
+    const betas = diagnostics.betasVsSpy;
+    if (betas?.available) {
+      const values = betas.values || {};
+      notes.push(
+        `Beta vs SPY (${betas.windowDays}D): GLD ${Number.isFinite(values.GLD) ? values.GLD.toFixed(2) : "N/A"}, QQQ ${
+          Number.isFinite(values.QQQ) ? values.QQQ.toFixed(2) : "N/A"
+        }, SCHD ${Number.isFinite(values.SCHD) ? values.SCHD.toFixed(2) : "N/A"}. 상관계수는 방향 유사성, 베타는 SPY 움직임 민감도를 보여줍니다.`,
+      );
+    }
+    if (notes.length === 0) {
+      notes.push("시장 오버레이 데이터가 아직 로딩 중입니다. 기본 리밸런싱 판단은 목표 밴드를 우선합니다.");
+    }
+    return notes;
+  }
+
+  function renderBandAdvice(normalizedAssets) {
+    const output = document.getElementById("adviceOutput");
+    const status = document.getElementById("adviceStatus");
+    if (!output) return;
     const total = normalizedAssets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
     const currentWeights = Object.fromEntries(
-      normalizedAssets.map((asset) => [asset.ticker, total > 0 ? asset.current / total : 0]),
+      normalizedAssets.map((asset) => [asset.ticker, total > 0 ? Math.max(0, Number(asset.current) || 0) / total : 0]),
     );
-    const targetWeights = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset.target]));
-    const currentRisk = calculateRiskMetrics(buildPortfolioIndexSeries(currentWeights));
-    const targetRisk = calculateRiskMetrics(buildPortfolioIndexSeries(targetWeights));
-    const currentCagr = calculateExpectedCagr(normalizedAssets);
-    const targetCagr = calculateTargetExpectedCagr(normalizedAssets);
-    const allocationAdvice = buildAllocationAdviceRows(normalizedAssets, currentWeights);
-    const allWithinBands = allocationAdvice.every((row) => row.bandStatus === "Within Band");
-    const riskDiagnostics = computeInsightRiskDiagnostics();
+    const rows = buildAllocationAdviceRows(normalizedAssets, currentWeights);
+    const allWithinBands = rows.every((row) => row.bandStatus === "Within Band");
+    if (status) status.textContent = allWithinBands ? "모든 자산 밴드 안" : "밴드 이탈 자산 있음";
+    const summary = getAdviceSummary(rows);
+    const marketNotes = getMarketOverlayNotes();
 
-    return {
-      generatedFrom: "portfolio-rebalancer-dashboard",
-      asOf: new Date().toISOString(),
-      contribution: state.contribution,
-      planMonths: state.planMonths,
-      totalCurrent: total,
-      advicePolicy: {
-        philosophy: [
-          "Long-term US ETF investing",
-          "Prefer DCA over market timing",
-          "SPY/QQQ are growth engines",
-          "GLD is a risk buffer and rebalancing source",
-          "SCHD is income/defensive equity, not the main growth asset",
-          "Use target bands rather than exact rigid percentages",
-        ],
-        targetBands: ADVICE_POLICY,
-        allWithinBands,
-      },
-      allocationAdvice,
-      assets: normalizedAssets.map((asset) => ({
-        ticker: asset.ticker,
-        current: Math.round(asset.current),
-        currentWeight: currentWeights[asset.ticker] || 0,
-        targetWeight: asset.target,
-        expectedCagr: state.expectedReturns[asset.ticker] || 0,
-        currentCagrContribution: (currentWeights[asset.ticker] || 0) * (state.expectedReturns[asset.ticker] || 0),
-        targetCagrContribution: asset.target * (state.expectedReturns[asset.ticker] || 0),
-      })),
-      firstMonthPlan: result.rows.map((row) => ({
-        ticker: row.ticker,
-        trade: Math.round(row.trade),
-        currentWeight: row.currentWeight,
-        afterWeight: row.afterWeight,
-        targetWeight: row.target,
-        gapAfter: row.gapAfter,
-      })),
-      actualTrades: { ...state.actualTrades },
-      risk: {
-        currentMdd: currentRisk.mdd,
-        currentSharpe: currentRisk.sharpe,
-        targetMdd: targetRisk.mdd,
-        targetSharpe: targetRisk.sharpe,
-      },
-      cagr: {
-        current: currentCagr,
-        target: targetCagr,
-        displayedCurrent: readText("topCurrentCagr"),
-        displayedTarget: readText("topTargetCagr"),
-      },
-      marketPulse: {
-        fearGreed: { value: readText("fearGreedValue"), label: readText("fearGreedLabel") },
-        buffett: { value: readText("buffettValue"), label: readText("buffettLabel") },
-        vix: { value: readText("vixValue"), label: readText("vixLabel") },
-      },
-      marketRegime: {
-        availableIndicators: {
-          buffettIndicator: readText("buffettValue") ? { value: readText("buffettValue"), label: readText("buffettLabel") } : null,
-          shillerCape: null,
-          usM2YoyGrowth: null,
-          us10yTreasuryYield: null,
-          us10yRealYield: null,
-        },
-        gldSpyCorrelation: riskDiagnostics.gldSpyCorrelation,
-        betasVsSpy: riskDiagnostics.betasVsSpy,
-      },
-      sourceRiskStatus: readText("sourceRiskStatus"),
-      monthlyReport: {
-        plannedNet: readText("reportPlannedNet"),
-        actualNet: readText("reportActualNet"),
-        netGap: readText("reportNetGap"),
-        nextTicker: readText("reportNextTicker"),
-        nextDetail: readText("reportNextDetail"),
-      },
-    };
-  }
-
-  function renderInsight(payload) {
-    const output = document.getElementById("insightOutput");
-    const generatedAt = document.getElementById("insightGeneratedAt");
-    if (!output) return;
-    const allocationAdvice = Array.isArray(payload?.allocationAdvice) ? payload.allocationAdvice : [];
-    const findings = Array.isArray(payload?.findings) ? payload.findings : [];
-    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
-    const caveats = Array.isArray(payload?.caveats) ? payload.caveats : [];
     output.innerHTML = `
-      <div class="insight-summary">${escapeHtml(payload?.summary || "요약을 생성하지 못했습니다.")}</div>
-      ${
-        allocationAdvice.length > 0
-          ? `<div class="insight-table-wrap">
-              <table class="insight-table">
-                <thead>
+      <div class="advice-summary">${escapeHtml(summary)}</div>
+      <div class="advice-table-wrap">
+        <table class="advice-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Current</th>
+              <th>Target / Band</th>
+              <th>Diff</th>
+              <th>Band Status</th>
+              <th>Action Recommendation</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) => `
                   <tr>
-                    <th>Ticker</th>
-                    <th>Current</th>
-                    <th>Target</th>
-                    <th>Diff</th>
-                    <th>Band</th>
-                    <th>Action</th>
+                    <th>${escapeHtml(row.ticker)}</th>
+                    <td>${escapeHtml(formatAdvicePercent(row.currentWeight))}</td>
+                    <td>${escapeHtml(`${formatAdvicePercent(row.targetWeight, 0)} / ${formatAdvicePercent(row.bandMin, 0)}-${formatAdvicePercent(row.bandMax, 0)}`)}</td>
+                    <td>${escapeHtml(formatSignedAdvicePercent(row.differenceFromTarget))}</td>
+                    <td><span class="band-status ${escapeHtml(row.bandStatus.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(row.bandStatus)}</span></td>
+                    <td>${escapeHtml(row.actionRecommendation)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  ${allocationAdvice
-                    .map(
-                      (row) => `
-                        <tr>
-                          <th>${escapeHtml(row.ticker)}</th>
-                          <td>${escapeHtml(row.currentAllocation)}</td>
-                          <td>${escapeHtml(row.targetAllocation)}</td>
-                          <td>${escapeHtml(row.differenceFromTarget)}</td>
-                          <td><span class="band-status ${escapeHtml(String(row.bandStatus || "").toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(row.bandStatus)}</span></td>
-                          <td>${escapeHtml(row.actionRecommendation)}</td>
-                        </tr>
-                      `,
-                    )
-                    .join("")}
-                </tbody>
-              </table>
-            </div>`
-          : ""
-      }
-      <div class="insight-columns">
+                `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="advice-columns">
         <div>
-          <h3>Findings</h3>
-          <ul>${findings.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>특이사항 없음</li>"}</ul>
+          <h3>운용 원칙</h3>
+          <ul>
+            <li>장기 미국 ETF 투자 관점에서 DCA를 우선합니다.</li>
+            <li>SPY/QQQ는 성장 엔진, GLD는 리스크 완충 및 리밸런싱 재원입니다.</li>
+            <li>SCHD는 인컴/방어 주식이며 주요 성장 자산은 아닙니다.</li>
+          </ul>
         </div>
         <div>
-          <h3>Suggestions</h3>
-          <ul>${suggestions.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>제안 없음</li>"}</ul>
+          <h3>시장 오버레이</h3>
+          <ul>${marketNotes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
         </div>
       </div>
-      ${payload?.plainKoreanSummary ? `<div class="insight-plain-summary">${escapeHtml(payload.plainKoreanSummary)}</div>` : ""}
-      ${caveats.length > 0 ? `<div class="insight-caveats">${caveats.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+      <div class="advice-plain-summary">Plain Korean summary: ${escapeHtml(summary)}</div>
     `;
-    if (generatedAt && payload?.generatedAt) {
-      generatedAt.textContent = new Date(payload.generatedAt).toLocaleString("ko-KR");
-    }
-  }
-
-  async function generateInsight() {
-    const button = document.getElementById("generateInsightButton");
-    const status = document.getElementById("insightStatus");
-    const output = document.getElementById("insightOutput");
-    if (!INSIGHTS_URL || !button || !status || !output) return;
-    button.disabled = true;
-    status.textContent = "인사이트 생성 중...";
-    output.innerHTML = `<div class="insight-empty">Analyzing current dashboard...</div>`;
-    try {
-      const response = await fetch(INSIGHTS_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(buildInsightPayload()),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
-      renderInsight(payload);
-      status.textContent = "현재 화면 기준 인사이트";
-    } catch (error) {
-      status.textContent = "인사이트 생성 실패";
-      const message = /quota|billing/i.test(error.message)
-        ? "OpenAI API quota 또는 billing 설정을 확인해 주세요. 설정이 완료되면 이 버튼으로 바로 인사이트를 생성할 수 있습니다."
-        : error.message;
-      output.innerHTML = `<div class="insight-error">${escapeHtml(message)}</div>`;
-    } finally {
-      button.disabled = false;
-    }
   }
 
   function setText(id, value) {
@@ -1955,7 +1921,7 @@
     return { dates: commonDates.slice(1), returns };
   }
 
-  function computeInsightRiskDiagnostics() {
+  function computeAdviceRiskDiagnostics() {
     const tickers = ["GLD", "SCHD", "SPY", "QQQ"];
     const aligned = buildAlignedDailyReturns(state.sourceRiskHistory, tickers);
     if (!aligned) {
@@ -2467,10 +2433,6 @@
     const saveActualTradesButton = document.getElementById("saveActualTradesButton");
     if (saveActualTradesButton) {
       saveActualTradesButton.addEventListener("click", saveActualTradesToServer);
-    }
-    const generateInsightButton = document.getElementById("generateInsightButton");
-    if (generateInsightButton) {
-      generateInsightButton.addEventListener("click", generateInsight);
     }
     loadSavedCalendarVisibility();
     loadSavedInstitutionalVisibility();
