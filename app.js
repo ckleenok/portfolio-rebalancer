@@ -583,7 +583,6 @@
     syncContributionInputs();
     renderHoldingsChart();
     syncTargetInputs();
-    renderTargetSummary();
     renderCurrentMetric(result.currentTotal);
     renderTargetContributionBreakdown(normalizedAssets);
     renderBandAdvice(normalizedAssets);
@@ -631,27 +630,6 @@
       });
     bindActualTradeInputs(result);
     renderTradeSummary(result);
-
-    const allocationRows = document.getElementById("allocationRows");
-    allocationRows.innerHTML = "";
-    result.rows.forEach((row) => {
-      const beforeWidth = Math.min(row.currentWeight / 0.5, 1) * 100;
-      const afterWidth = Math.min(row.afterWeight / 0.5, 1) * 100;
-      const gapClass = row.gapAfter < -0.001 ? "negative" : "";
-      const line = document.createElement("div");
-      line.className = "allocation-row";
-      line.innerHTML = `
-        <strong>${row.ticker}</strong>
-        <div class="dual-bars">
-          <div class="bar-track"><div class="bar-fill before" style="width: ${beforeWidth}%"></div></div>
-          <div class="bar-track"><div class="bar-fill after" style="width: ${afterWidth}%"></div></div>
-        </div>
-        <span class="hide-mobile">${formatPercent(row.currentWeight)}</span>
-        <span>${formatPercent(row.afterWeight)}</span>
-        <span class="${gapClass}">${formatPercent(row.gapAfter)}</span>
-      `;
-      allocationRows.appendChild(line);
-    });
 
     renderSimulation();
     renderCagr();
@@ -1434,16 +1412,6 @@
     if (totalLabel) {
       totalLabel.textContent = `${totalPercent.toFixed(1)}%`;
     }
-  }
-
-  function renderTargetSummary() {
-    const summary = document.getElementById("allocationTargetSummary");
-    if (!summary) return;
-    const parts = state.assets.map((asset) => {
-      const percent = (asset.target * 100).toFixed(1).replace(/\.0$/, "");
-      return `${asset.ticker} ${percent}`;
-    });
-    summary.textContent = `목표 ${parts.join(" / ")}`;
   }
 
   function renderWindowToggle() {
