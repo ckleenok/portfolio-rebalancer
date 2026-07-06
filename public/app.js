@@ -901,6 +901,12 @@
     return "Within Band";
   }
 
+  function formatBandStatusLabel(status) {
+    if (status === "Underweight") return "부족";
+    if (status === "Overweight") return "초과";
+    return "밴드 안";
+  }
+
   function buildTickerActionRecommendation(ticker, weight, weightsByTicker) {
     const band = ADVICE_POLICY[ticker];
     const percent = formatBandPercent(weight);
@@ -910,7 +916,7 @@
         const needsQqq = (weightsByTicker.QQQ || 0) < ADVICE_POLICY.QQQ.target;
         const needsSpy = (weightsByTicker.SPY || 0) < ADVICE_POLICY.SPY.target;
         if (needsQqq || needsSpy) {
-          return `GLD ${percent}는 방어 비중이 높은 상태입니다. 급하게 매도할 필요는 없고, GLD를 dry powder로 보면서 신규 매수/점진 축소 재원을 ${needsQqq ? "QQQ" : "SPY"}에 우선 배정하세요.`;
+          return `GLD ${percent}는 방어 비중이 높은 상태입니다. 급하게 매도할 필요는 없고, GLD를 조정장에서 주식을 사기 위한 완충 재원으로 보면서 신규 매수/점진 축소 재원을 ${needsQqq ? "QQQ" : "SPY"}에 우선 배정하세요.`;
         }
         return `GLD ${percent}는 상단 밴드 위입니다. 버리는 자산이 아니라 조정장에서 주식을 사기 위한 완충 자산으로 보고, 신규 매수는 다른 저비중 자산에 우선 배정하세요.`;
       }
@@ -918,12 +924,12 @@
         return "GLD는 목표보다 살짝 높아도 방어 버퍼 구간입니다. SPY/QQQ가 크게 부족하지 않다면 강제 리밸런싱은 필요 없습니다.";
       }
       if (weight < band.min) return "GLD가 하단 밴드 아래라 하락장 완충력이 약해질 수 있습니다. 향후 신규 매수금 일부를 GLD에 배정해 20% 근처로 복귀시키세요.";
-      return "GLD는 밴드 안입니다. 완충 자산으로 유지하면서 DCA를 계속하세요.";
+      return "GLD는 밴드 안입니다. 완충 자산으로 유지하면서 정기분할매수를 계속하세요.";
     }
     if (ticker === "QQQ") {
       if (weight < band.min) return "QQQ가 성장 엔진 대비 부족합니다. 신규 매수금은 우선 QQQ로 배정하세요.";
       if (weight > band.max) return "QQQ 성장 집중도가 높습니다. 큰 과열이 아니라면 매도보다 신규 매수금을 SPY/GLD/SCHD로 돌리세요.";
-      return "QQQ는 밴드 안입니다. 장기 성장 엔진으로 DCA를 유지하세요.";
+      return "QQQ는 밴드 안입니다. 장기 성장 엔진으로 정기분할매수를 유지하세요.";
     }
     if (ticker === "SPY") {
       if (weight < band.min) return "SPY가 미국 시장 핵심 비중 대비 부족합니다. QQQ 우선순위를 확인한 뒤 SPY를 보강하세요.";
@@ -935,7 +941,7 @@
       if (weight > band.max) return "SCHD가 높아 배당/방어 주식이 성장을 일부 밀어낼 수 있습니다. 신규 매수금은 QQQ/SPY에 우선 배정하세요.";
       return "SCHD는 밴드 안입니다. 인컴/방어 주식 역할로 유지하세요.";
     }
-    return "밴드 안에서 DCA를 유지하세요.";
+    return "밴드 안에서 정기분할매수를 유지하세요.";
   }
 
   function buildAllocationAdviceRows(normalizedAssets, weightsByTicker) {
@@ -984,7 +990,7 @@
   function getAdviceSummary(rows) {
     const allWithinBands = rows.every((row) => row.bandStatus === "Within Band");
     if (allWithinBands) {
-      return "Portfolio is within target bands. No urgent rebalance needed. 신규 매수금은 기존 DCA 계획대로 분산 집행하세요.";
+      return "포트폴리오가 목표 밴드 안에 있습니다. 급한 리밸런싱은 필요 없고, 신규 매수금은 기존 정기분할매수 계획대로 분산 집행하세요.";
     }
     const byTicker = Object.fromEntries(rows.map((row) => [row.ticker, row]));
     const messages = [];
@@ -997,7 +1003,7 @@
     if (byTicker.GLD?.bandStatus === "Overweight") {
       messages.push("GLD는 버리는 자산이 아니라, 조정장에서 주식을 사기 위한 완충 자산입니다. 급하게 매도할 필요는 없습니다.");
     } else if ((byTicker.GLD?.currentWeight || 0) >= ADVICE_POLICY.GLD.target && (byTicker.GLD?.currentWeight || 0) <= ADVICE_POLICY.GLD.max) {
-      messages.push("GLD is slightly above target but still within the defensive buffer zone.");
+      messages.push("GLD는 목표보다 살짝 높지만 아직 방어 버퍼 구간 안에 있습니다.");
     } else if (byTicker.GLD?.bandStatus === "Underweight") {
       messages.push("GLD가 낮아 하락장 방어력이 약해질 수 있습니다. 향후 신규 매수금 일부를 GLD에 배정하세요.");
     }
@@ -1015,7 +1021,7 @@
     const buffettValue = readText("buffettValue");
     const buffettLabel = readText("buffettLabel");
     if (buffettValue && buffettValue !== "--") {
-      notes.push(`Buffett Indicator: ${buffettValue}${buffettLabel && buffettLabel !== "Loading..." ? ` (${buffettLabel})` : ""}.`);
+      notes.push(`버핏 지표: ${buffettValue}${buffettLabel && buffettLabel !== "Loading..." ? ` (${buffettLabel})` : ""}.`);
     }
     const diagnostics = computeAdviceRiskDiagnostics();
     const corr = diagnostics.gldSpyCorrelation;
@@ -1033,19 +1039,19 @@
         }.`,
       );
       if (Number.isFinite(expansion) && expansion > 0.3) {
-        notes.push("Short-term correlation spike detected. Avoid overreacting; check 90d/180d before reducing GLD further.");
+        notes.push("단기 상관관계 급등이 감지됐습니다. 과잉 반응하기보다 90일/180일 흐름을 함께 확인한 뒤 GLD 축소 여부를 판단하세요.");
       } else if (Number.isFinite(expansion) && expansion > 0.2) {
-        notes.push("Recent GLD-SPY diversification benefit has weakened, but this may be a short-term regime effect.");
+        notes.push("최근 GLD-SPY 분산 효과가 약해졌지만, 단기 국면 변화일 수 있습니다.");
       }
       if (Number.isFinite(corr30) && Number.isFinite(corr180) && corr30 >= 0.55 && corr180 <= 0.45) {
-        notes.push("Recent co-movement is high, but medium-term diversification is still alive.");
+        notes.push("최근 동조화는 높지만, 중기 분산 효과는 아직 살아 있습니다.");
       }
     }
     const betas = diagnostics.betasVsSpy;
     if (betas?.available) {
       const values = betas.values || {};
       notes.push(
-        `Beta vs SPY (${betas.windowDays}D): GLD ${Number.isFinite(values.GLD) ? values.GLD.toFixed(2) : "N/A"}, QQQ ${
+        `SPY 대비 베타 (${betas.windowDays}일): GLD ${Number.isFinite(values.GLD) ? values.GLD.toFixed(2) : "N/A"}, QQQ ${
           Number.isFinite(values.QQQ) ? values.QQQ.toFixed(2) : "N/A"
         }, SCHD ${Number.isFinite(values.SCHD) ? values.SCHD.toFixed(2) : "N/A"}. 상관계수는 방향 유사성, 베타는 SPY 움직임 민감도를 보여줍니다.`,
       );
@@ -1090,17 +1096,18 @@
         acceptableBand: `${formatAdvicePercent(row.bandMin, 0)}-${formatAdvicePercent(row.bandMax, 0)}`,
         differenceFromTarget: formatSignedAdvicePercent(row.differenceFromTarget),
         bandStatus: row.bandStatus,
+        bandStatusLabel: formatBandStatusLabel(row.bandStatus),
         actionRecommendation: row.actionRecommendation,
       })),
       marketOverlay: context.marketNotes,
       principles: [
-        "Long-term US ETF investing",
-        "Prefer DCA over market timing",
-        "SPY/QQQ are growth engines",
-        "GLD is a risk buffer and rebalancing source",
-        "SCHD is income/defensive equity, not the main growth asset",
-        "Do not suggest panic selling, all-in, leverage, or market timing",
-        "Use target bands rather than exact rigid percentages",
+        "장기 미국 ETF 투자",
+        "시장 타이밍보다 정기분할매수 우선",
+        "SPY/QQQ는 성장 엔진",
+        "GLD는 리스크 완충 및 리밸런싱 재원",
+        "SCHD는 인컴/방어 주식이며 주요 성장 자산은 아님",
+        "패닉 매도, 몰빵, 레버리지, 시장 타이밍 금지",
+        "정확한 비율보다 목표 밴드 중심 운용",
       ],
     };
   }
@@ -1136,19 +1143,21 @@
     if (status) status.textContent = context.allWithinBands ? "모든 자산 밴드 안" : "밴드 이탈 자산 있음";
     const summary = context.summary;
     const marketNotes = context.marketNotes;
+    const showRuleSummary = state.aiAdvice?.status !== "ready";
 
     output.innerHTML = `
-      <div class="advice-summary">${escapeHtml(summary)}</div>
+      ${showRuleSummary ? `<div class="advice-summary">${escapeHtml(summary)}</div>` : ""}
+      ${renderAiAdviceBlock()}
       <div class="advice-table-wrap">
         <table class="advice-table">
           <thead>
             <tr>
-              <th>Ticker</th>
-              <th>Current</th>
-              <th>Target / Band</th>
-              <th>Diff</th>
-              <th>Band Status</th>
-              <th>Action Recommendation</th>
+              <th>티커</th>
+              <th>현재</th>
+              <th>목표 / 밴드</th>
+              <th>차이</th>
+              <th>밴드 상태</th>
+              <th>추천 액션</th>
             </tr>
           </thead>
           <tbody>
@@ -1160,7 +1169,7 @@
                     <td>${escapeHtml(formatAdvicePercent(row.currentWeight))}</td>
                     <td>${escapeHtml(`${formatAdvicePercent(row.targetWeight, 0)} / ${formatAdvicePercent(row.bandMin, 0)}-${formatAdvicePercent(row.bandMax, 0)}`)}</td>
                     <td>${escapeHtml(formatSignedAdvicePercent(row.differenceFromTarget))}</td>
-                    <td><span class="band-status ${escapeHtml(row.bandStatus.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(row.bandStatus)}</span></td>
+                    <td><span class="band-status ${escapeHtml(row.bandStatus.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(formatBandStatusLabel(row.bandStatus))}</span></td>
                     <td>${escapeHtml(row.actionRecommendation)}</td>
                   </tr>
                 `,
@@ -1173,7 +1182,7 @@
         <div>
           <h3>운용 원칙</h3>
           <ul>
-            <li>장기 미국 ETF 투자 관점에서 DCA를 우선합니다.</li>
+            <li>장기 미국 ETF 투자 관점에서 정기분할매수를 우선합니다.</li>
             <li>SPY/QQQ는 성장 엔진, GLD는 리스크 완충 및 리밸런싱 재원입니다.</li>
             <li>SCHD는 인컴/방어 주식이며 주요 성장 자산은 아닙니다.</li>
           </ul>
@@ -1183,8 +1192,6 @@
           <ul>${marketNotes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
         </div>
       </div>
-      <div class="advice-plain-summary">Plain Korean summary: ${escapeHtml(summary)}</div>
-      ${renderAiAdviceBlock()}
     `;
   }
 
@@ -2067,16 +2074,16 @@
         expansion30dVs180d: expansion,
         interpretation:
           Number.isFinite(expansion) && expansion > 0.3
-            ? "Short-term correlation spike"
+            ? "단기 상관관계 급등"
             : Number.isFinite(expansion) && expansion > 0.2
-              ? "Recent diversification benefit weakened"
-              : "No major short-term correlation expansion",
+              ? "최근 분산 효과 약화"
+              : "뚜렷한 단기 상관관계 확대 없음",
       },
       betasVsSpy: {
         available: true,
         windowDays: betaWindow,
         values: betas,
-        note: "Correlation shows direction similarity; beta shows sensitivity to SPY moves.",
+        note: "상관계수는 방향 유사성, 베타는 SPY 움직임 민감도를 보여줍니다.",
       },
     };
   }

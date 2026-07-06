@@ -15,7 +15,7 @@ function buildAdviceInterpretationInput(payload) {
     {
       role: "system",
       content:
-        "You are a Korean portfolio reviewer, not a translator. Use only the supplied rule-based portfolio data. Add value by ranking priorities, explaining tradeoffs, catching misleading signals, and turning the table into a practical next-action checklist. Do not invent prices, tax advice, personal circumstances, news, or guarantees. This is educational guidance, not financial advice. Prefer DCA and new-contribution rebalancing before selling. Never recommend all-in, leverage, panic selling, or market timing.",
+        "당신은 번역기가 아니라 한국어 포트폴리오 검토자입니다. 제공된 룰 기반 포트폴리오 데이터만 사용하세요. 우선순위 판단, 상충관계 설명, 오해하기 쉬운 신호 점검, 다음 행동 정리에 집중하세요. 가격, 세금, 개인 사정, 뉴스, 수익 보장을 지어내지 마세요. 교육용 참고 의견이며 투자 조언이 아닙니다. 매도보다 신규 매수금 기반 리밸런싱을 우선하세요. 몰빵, 레버리지, 패닉 매도, 시장 타이밍을 권하지 마세요.",
     },
     {
       role: "user",
@@ -26,13 +26,14 @@ function buildAdviceInterpretationInput(payload) {
         "1. 가장 중요한 판단 1개",
         "2. 신규 매수금 배정 우선순위",
         "3. 팔지 말아야 할 이유 또는 팔아도 되는 조건이 있으면 그 조건",
-        "4. GLD/SPY/QQQ/SCHD 역할 관점에서 생기는 tradeoff",
-        "5. marketOverlay가 있으면 과잉해석하지 말고 실제로 의미 있는 신호만 반영",
+        "4. GLD/SPY/QQQ/SCHD 역할 관점에서 생기는 상충관계",
+        "5. 시장 오버레이가 있으면 과잉해석하지 말고 실제로 의미 있는 신호만 반영",
         "6. 사용자가 오해하기 쉬운 점 1개",
         "반드시 지킬 톤: 단호하지만 과장하지 말 것. 급하게 매도할 필요는 없습니다. GLD는 버리는 자산이 아니라 조정장에서 주식을 사기 위한 완충 자산입니다. 신규 매수금은 우선순위에 따라 배정하세요.",
-        "출력 형식은 한국어로만 작성하고, 아래 4개 짧은 섹션을 유지하세요:",
+        "출력은 한국어로만 작성하세요. 영어는 GLD, SPY, QQQ, SCHD 같은 티커와 숫자 단위에만 허용됩니다. Overweight, Underweight, Within Band, DCA, dry powder, tradeoff 같은 표현은 반드시 한국어로 바꾸세요.",
+        "아래 4개 짧은 섹션을 유지하세요:",
         "핵심 판단: 1-2문장",
-        "다음 액션: 2-3개 bullet",
+        "다음 액션: 2-3개 항목",
         "주의할 점: 1-2문장",
         "한줄 요약: 1문장. 마지막에는 투자 결정의 책임은 사용자에게 있다는 점을 짧게 명시하세요.",
         JSON.stringify(safePayload).slice(0, 12000),
