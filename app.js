@@ -16,7 +16,12 @@
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/market-pulse" : null;
   const INSTITUTIONAL_HOLDINGS_URL =
     typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/institutional-holdings" : null;
-
+  const ACTUAL_TRADES_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades" : null;
+  const ACTUAL_TRADES_SYNC_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/actual-trades-sync" : null;
+  const INSIGHTS_URL =
+    typeof location !== "undefined" && location.protocol.startsWith("http") ? "/api/insights" : null;
   const state = {
     contribution: 400,
     planMonths: 6,
@@ -25,6 +30,7 @@
     assets: TARGETS.map((asset) => ({ ...asset })),
     draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
     trend30: {},
+    sourceRiskHistory: {},
     expectedReturns: {
       GLD: 0.04,
       SCHD: 0.07,
@@ -32,6 +38,8 @@
       QQQ: 0.1,
     },
     actualTrades: {},
+    manualTrades: {},
+    sourceSnapshots: [],
   };
 
   const ASSET_COLORS = {
@@ -42,9 +50,18 @@
   };
   const TARGET_STORAGE_KEY = "portfolio-rebalancer-targets-v1";
   const CALENDAR_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-calendar-visible-v1";
+  const INSTITUTIONAL_VISIBLE_STORAGE_KEY = "portfolio-rebalancer-institutional-visible-v1";
   const PLAN_MONTHS_STORAGE_KEY = "portfolio-rebalancer-plan-months-v1";
   const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
+  const MANUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-manual-trades-v1";
   const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
+  const ACTUAL_TRADE_TICKERS = ["GLD", "SCHD", "SPY", "QQQ"];
+  const ADVICE_POLICY = {
+    SCHD: { target: 0.1, min: 0.08, max: 0.12 },
+    GLD: { target: 0.2, min: 0.18, max: 0.25 },
+    SPY: { target: 0.3, min: 0.27, max: 0.33 },
+    QQQ: { target: 0.4, min: 0.37, max: 0.43 },
+  };
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -281,6 +298,67 @@
       .trim();
   }
 
+  function parseSheetDate(value) {
+    const text = normalizeCell(value).replace(/\.$/, "");
+    const parts = text.split(/[.\/-]/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
+    const rawYear = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2] || 1);
+    if (!Number.isFinite(rawYear) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  }
+
+  function parseSourcePortfolioSnapshots(lines) {
+    const snapshots = [];
+    for (const row of lines) {
+      const preferredDate = parseSheetDate(row[16]);
+      const preferredValues = [row[17], row[18], row[19], row[20]].map(parseMoney);
+      if (preferredDate && preferredValues.every((value) => value > 0)) {
+        const cash = parseMoney(row[21]);
+        const invested = preferredValues.reduce((sum, value) => sum + value, 0);
+        snapshots.push({
+          date: preferredDate,
+          dateLabel: normalizeCell(row[16]),
+          SPY: preferredValues[0],
+          QQQ: preferredValues[1],
+          SCHD: preferredValues[2],
+          GLD: preferredValues[3],
+          cash: cash > 0 ? cash : 0,
+          total: invested + (cash > 0 ? cash : 0),
+          invested,
+        });
+        continue;
+      }
+      for (let index = 0; index <= row.length - 5; index += 1) {
+        const date = parseSheetDate(row[index]);
+        if (!date) continue;
+        const values = [row[index + 1], row[index + 2], row[index + 3], row[index + 4]].map(parseMoney);
+        if (!values.every((value) => value > 0)) continue;
+        const cash = parseMoney(row[index + 5]);
+        const invested = values.reduce((sum, value) => sum + value, 0);
+        snapshots.push({
+          date,
+          dateLabel: normalizeCell(row[index]),
+          SPY: values[0],
+          QQQ: values[1],
+          SCHD: values[2],
+          GLD: values[3],
+          cash: cash > 0 ? cash : 0,
+          total: invested + (cash > 0 ? cash : 0),
+          invested,
+        });
+        break;
+      }
+    }
+    return snapshots
+      .filter((row) => Number.isFinite(row.total) && row.total > 0)
+      .sort((a, b) => a.date - b.date);
+  }
+
   function parseLatestSheetRow(csvText) {
     const lines = String(csvText || "")
       .split(/\r?\n/)
@@ -308,6 +386,8 @@
     let latest = null;
     let latestRawRow = null;
 
+    const sourceSnapshots = parseSourcePortfolioSnapshots(lines);
+
     if (columns && Object.values(columns).every((index) => index >= 0)) {
       const totalsHistory = [];
       for (const row of lines) {
@@ -324,7 +404,7 @@
         totalsHistory.length > 0
           ? totalsHistory.slice(-6)
           : findRecentTotalsFromSheet(lines);
-      return latest ? { ...latest, recentCurrentTotals } : null;
+      return latest ? { ...latest, recentCurrentTotals, sourceSnapshots } : null;
     }
 
     for (const row of lines) {
@@ -340,7 +420,7 @@
     }
 
     const recentCurrentTotals = findRecentTotalsFromSheet(lines);
-    return latest ? { ...latest, recentCurrentTotals } : null;
+    return latest ? { ...latest, recentCurrentTotals, sourceSnapshots } : null;
   }
 
   function findRecentTotalsFromSheet(lines) {
@@ -499,6 +579,7 @@
     syncTargetInputs();
     renderTargetSummary();
     renderCurrentMetric(result.currentTotal);
+    renderTargetContributionBreakdown(normalizedAssets);
     document.getElementById("shortMetric").textContent = `${state.planMonths}개월`;
     const tradeHorizonText = document.getElementById("tradeHorizonText");
     if (tradeHorizonText) {
@@ -518,6 +599,7 @@
       .forEach((row) => {
         const isSell = row.trade < 0;
         const actualTrade = Number(state.actualTrades[row.ticker] ?? 0);
+        const manualTrade = Number(state.manualTrades[row.ticker] ?? 0);
         const card = document.createElement("div");
         card.className = `buy-card ${isSell ? "sell-card" : ""}`;
         card.innerHTML = `
@@ -528,6 +610,11 @@
             <label class="actual-trade-entry">
               <span>실제 조정</span>
               <input data-actual-ticker="${row.ticker}" type="text" inputmode="numeric" value="${Math.round(actualTrade).toLocaleString("ko-KR")}" />
+              <em>만원</em>
+            </label>
+            <label class="actual-trade-entry">
+              <span>다른 소스</span>
+              <input data-manual-ticker="${row.ticker}" type="text" inputmode="numeric" value="${Math.round(manualTrade).toLocaleString("ko-KR")}" />
               <em>만원</em>
             </label>
           </div>
@@ -561,8 +648,13 @@
 
     renderSimulation();
     renderCagr();
+    renderMonthlyReport(result, normalizedAssets);
     renderTrendPanel();
     renderWindowToggle();
+  }
+
+  function combinedActualTrade(ticker) {
+    return Number(state.actualTrades[ticker] || 0) + Number(state.manualTrades[ticker] || 0);
   }
 
   function saveActualTrades() {
@@ -570,32 +662,157 @@
       const now = new Date();
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+      localStorage.setItem(MANUAL_TRADES_STORAGE_KEY, JSON.stringify(state.manualTrades));
       localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, ym);
     } catch {
       // ignore storage errors
     }
   }
 
+  function currentYearMonth() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function normalizeActualTrades(input) {
+    return Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, parseMoney(input?.[ticker] ?? 0)]));
+  }
+
   function loadSavedActualTrades() {
     try {
-      const now = new Date();
-      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const currentYm = currentYearMonth();
       const savedYm = localStorage.getItem(ACTUAL_TRADES_MONTH_KEY);
       if (savedYm !== currentYm) {
-        state.actualTrades = Object.fromEntries(["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, 0]));
+        state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        state.manualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
         localStorage.setItem(ACTUAL_TRADES_STORAGE_KEY, JSON.stringify(state.actualTrades));
+        localStorage.setItem(MANUAL_TRADES_STORAGE_KEY, JSON.stringify(state.manualTrades));
         localStorage.setItem(ACTUAL_TRADES_MONTH_KEY, currentYm);
         return;
       }
       const raw = localStorage.getItem(ACTUAL_TRADES_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return;
-      state.actualTrades = Object.fromEntries(
-        ["GLD", "SCHD", "SPY", "QQQ"].map((ticker) => [ticker, parseMoney(parsed[ticker] ?? 0)]),
-      );
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          state.actualTrades = normalizeActualTrades(parsed);
+        }
+      }
+      const manualRaw = localStorage.getItem(MANUAL_TRADES_STORAGE_KEY);
+      if (manualRaw) {
+        const manualParsed = JSON.parse(manualRaw);
+        if (manualParsed && typeof manualParsed === "object") {
+          state.manualTrades = normalizeActualTrades(manualParsed);
+        }
+      }
     } catch {
       // ignore parse/storage errors
+    }
+  }
+
+  async function loadActualTradesFromServer() {
+    if (!ACTUAL_TRADES_URL) return;
+    try {
+      const response = await fetch(ACTUAL_TRADES_URL, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const storage = String(payload?.storage || "");
+      if (storage && storage !== "kv") {
+        const status = document.getElementById("actualTradesSaveStatus");
+        if (status) status.textContent = "서버 영구저장 미연결: 현재 브라우저 값 사용";
+        return;
+      }
+      const currentYm = currentYearMonth();
+      const serverMonth = String(payload?.month || "");
+      if (!serverMonth) return;
+      if (serverMonth !== currentYm) {
+        state.actualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        state.manualTrades = Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, 0]));
+        saveActualTrades();
+        render();
+        return;
+      }
+      state.actualTrades = normalizeActualTrades(payload?.trades || {});
+      state.manualTrades = normalizeActualTrades(payload?.manualTrades || {});
+      saveActualTrades();
+      render();
+    } catch {
+      // keep local fallback
+    }
+  }
+
+  async function syncActualTradesFromTransactionRecord() {
+    if (!ACTUAL_TRADES_SYNC_URL) return;
+    try {
+      const response = await fetch(ACTUAL_TRADES_SYNC_URL, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const tickers = payload?.tickers || {};
+      let changed = false;
+      for (const ticker of ACTUAL_TRADE_TICKERS) {
+        if (Object.prototype.hasOwnProperty.call(tickers, ticker)) {
+          state.actualTrades[ticker] = Number(tickers[ticker]) || 0;
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveActualTrades();
+        render();
+      }
+    } catch {
+      // keep whatever was already loaded
+    }
+  }
+
+  async function saveActualTradesToServer() {
+    const status = document.getElementById("actualTradesSaveStatus");
+    if (!ACTUAL_TRADES_URL) {
+      if (status) status.textContent = "로컬 환경에서는 브라우저에만 저장됩니다.";
+      return;
+    }
+    const payload = {
+      month: currentYearMonth(),
+      trades: normalizeActualTrades(state.actualTrades),
+      manualTrades: normalizeActualTrades(state.manualTrades),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      if (status) status.textContent = "저장 중...";
+      const response = await fetch(ACTUAL_TRADES_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      let responsePayload = null;
+      try {
+        responsePayload = await response.clone().json();
+      } catch {
+        responsePayload = null;
+      }
+      if (!response.ok) {
+        const params = new URLSearchParams({
+          mode: "save",
+          month: payload.month,
+          GLD: String(payload.trades.GLD ?? 0),
+          SCHD: String(payload.trades.SCHD ?? 0),
+          SPY: String(payload.trades.SPY ?? 0),
+          QQQ: String(payload.trades.QQQ ?? 0),
+          manualGLD: String(payload.manualTrades.GLD ?? 0),
+          manualSCHD: String(payload.manualTrades.SCHD ?? 0),
+          manualSPY: String(payload.manualTrades.SPY ?? 0),
+          manualQQQ: String(payload.manualTrades.QQQ ?? 0),
+        });
+        const fallback = await fetch(`${ACTUAL_TRADES_URL}?${params.toString()}`, { method: "GET" });
+        if (!fallback.ok) throw new Error(`HTTP ${response.status}`);
+        try {
+          responsePayload = await fallback.clone().json();
+        } catch {
+          responsePayload = null;
+        }
+      }
+      const storage = String(responsePayload?.storage || "");
+      if (status) status.textContent = storage === "kv" ? "저장됨" : "저장됨 (현재 브라우저 위주)";
+    } catch (error) {
+      if (status) status.textContent = `저장 실패: ${error.message}`;
     }
   }
 
@@ -608,6 +825,14 @@
         renderTradeSummary(result);
       });
     });
+    document.querySelectorAll("[data-manual-ticker]").forEach((input) => {
+      input.addEventListener("input", (event) => {
+        const ticker = event.target.dataset.manualTicker;
+        state.manualTrades[ticker] = parseMoney(event.target.value);
+        saveActualTrades();
+        renderTradeSummary(result);
+      });
+    });
   }
 
   function renderTradeSummary(result) {
@@ -615,12 +840,375 @@
     if (!warning) return;
     const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
     const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
-    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, Number(state.actualTrades[row.ticker] || 0)), 0);
-    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -Number(state.actualTrades[row.ticker] || 0)), 0);
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, combinedActualTrade(row.ticker)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -combinedActualTrade(row.ticker)), 0);
     warning.hidden = false;
     warning.textContent =
       `계획: 총 매수 ${formatMoney(plannedBuy)}, 총 축소 ${formatMoney(plannedSell)}, 순투입 ${formatMoney(state.contribution)} | ` +
       `실제: 총 매수 ${formatMoney(actualBuy)}, 총 축소 ${formatMoney(actualSell)}, 순투입 ${formatMoney(actualBuy - actualSell)}`;
+  }
+
+  function renderTargetContributionBreakdown(normalizedAssets) {
+    const container = document.getElementById("targetContributionBreakdown");
+    if (!container) return;
+
+    const total = normalizedAssets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
+    const rows = normalizedAssets
+      .slice()
+      .sort((a, b) => TARGETS.findIndex((asset) => asset.ticker === a.ticker) - TARGETS.findIndex((asset) => asset.ticker === b.ticker));
+    container.innerHTML = `
+      <div class="target-contribution-title">
+        <span>CAGR 티커별 기여도</span>
+        <strong>현재 → 목표</strong>
+      </div>
+      <div class="target-contribution-list">
+        ${rows
+          .map((asset) => {
+            const expectedReturn = Number(state.expectedReturns[asset.ticker]) || 0;
+            const currentWeight = total > 0 ? Math.max(0, Number(asset.current) || 0) / total : 0;
+            const currentContribution = currentWeight * expectedReturn * 100;
+            const targetContribution = Number(asset.target || 0) * expectedReturn * 100;
+            return `
+              <div class="target-contribution-row">
+                <span class="target-contribution-ticker">
+                  <i style="background:${ASSET_COLORS[asset.ticker] || "#8190a3"}"></i>${asset.ticker}
+                </span>
+                <strong>${currentContribution.toFixed(1)}%p</strong>
+                <em>${targetContribution.toFixed(1)}%p</em>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function readText(id) {
+    return document.getElementById(id)?.textContent?.trim() || "";
+  }
+
+  function formatBandPercent(value) {
+    return `${(Number(value || 0) * 100).toFixed(0)}%`;
+  }
+
+  function getBandStatus(ticker, weight) {
+    const band = ADVICE_POLICY[ticker];
+    if (!band) return "Within Band";
+    if (weight < band.min) return "Underweight";
+    if (weight > band.max) return "Overweight";
+    return "Within Band";
+  }
+
+  function buildTickerActionRecommendation(ticker, weight, weightsByTicker) {
+    const band = ADVICE_POLICY[ticker];
+    const percent = formatBandPercent(weight);
+    if (!band) return "밴드 정보가 없습니다.";
+    if (ticker === "GLD") {
+      if (weight > band.max) {
+        const needsQqq = (weightsByTicker.QQQ || 0) < ADVICE_POLICY.QQQ.target;
+        const needsSpy = (weightsByTicker.SPY || 0) < ADVICE_POLICY.SPY.target;
+        if (needsQqq || needsSpy) {
+          return `GLD ${percent}는 방어 비중이 높은 상태입니다. 급하게 매도할 필요는 없고, GLD를 dry powder로 보면서 신규 매수/점진 축소 재원을 ${needsQqq ? "QQQ" : "SPY"}에 우선 배정하세요.`;
+        }
+        return `GLD ${percent}는 상단 밴드 위입니다. 버리는 자산이 아니라 조정장에서 주식을 사기 위한 완충 자산으로 보고, 신규 매수는 다른 저비중 자산에 우선 배정하세요.`;
+      }
+      if (weight >= ADVICE_POLICY.GLD.target && weight <= band.max) {
+        return "GLD는 목표보다 살짝 높아도 방어 버퍼 구간입니다. SPY/QQQ가 크게 부족하지 않다면 강제 리밸런싱은 필요 없습니다.";
+      }
+      if (weight < band.min) return "GLD가 하단 밴드 아래라 하락장 완충력이 약해질 수 있습니다. 향후 신규 매수금 일부를 GLD에 배정해 20% 근처로 복귀시키세요.";
+      return "GLD는 밴드 안입니다. 완충 자산으로 유지하면서 DCA를 계속하세요.";
+    }
+    if (ticker === "QQQ") {
+      if (weight < band.min) return "QQQ가 성장 엔진 대비 부족합니다. 신규 매수금은 우선 QQQ로 배정하세요.";
+      if (weight > band.max) return "QQQ 성장 집중도가 높습니다. 큰 과열이 아니라면 매도보다 신규 매수금을 SPY/GLD/SCHD로 돌리세요.";
+      return "QQQ는 밴드 안입니다. 장기 성장 엔진으로 DCA를 유지하세요.";
+    }
+    if (ticker === "SPY") {
+      if (weight < band.min) return "SPY가 미국 시장 핵심 비중 대비 부족합니다. QQQ 우선순위를 확인한 뒤 SPY를 보강하세요.";
+      if (weight > band.max) return "SPY가 상단 밴드 위입니다. 즉시 매도보다 신규 매수금을 저비중 자산으로 배정하세요.";
+      return "SPY는 밴드 안입니다. 미국 시장 코어로 유지하세요.";
+    }
+    if (ticker === "SCHD") {
+      if (weight < band.min) return "SCHD는 부족하지만 성장 엔진은 아닙니다. 배당/방어 선호가 크지 않다면 QQQ/SPY 이후 천천히 보강하세요.";
+      if (weight > band.max) return "SCHD가 높아 배당/방어 주식이 성장을 일부 밀어낼 수 있습니다. 신규 매수금은 QQQ/SPY에 우선 배정하세요.";
+      return "SCHD는 밴드 안입니다. 인컴/방어 주식 역할로 유지하세요.";
+    }
+    return "밴드 안에서 DCA를 유지하세요.";
+  }
+
+  function buildAllocationAdviceRows(normalizedAssets, weightsByTicker) {
+    const order = ["SCHD", "GLD", "SPY", "QQQ"];
+    const byTicker = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset]));
+    return order
+      .filter((ticker) => byTicker[ticker])
+      .map((ticker) => {
+        const asset = byTicker[ticker];
+        const currentWeight = weightsByTicker[ticker] || 0;
+        const policy = ADVICE_POLICY[ticker];
+        return {
+          ticker,
+          currentWeight,
+          targetWeight: policy.target,
+          bandMin: policy.min,
+          bandMax: policy.max,
+          differenceFromTarget: currentWeight - policy.target,
+          bandStatus: getBandStatus(ticker, currentWeight),
+          actionRecommendation: buildTickerActionRecommendation(ticker, currentWeight, weightsByTicker),
+          appTargetWeight: asset.target,
+        };
+      });
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function buildInsightPayload() {
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const result = allocateBuyOnly(normalizedAssets, state.contribution);
+    const total = normalizedAssets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
+    const currentWeights = Object.fromEntries(
+      normalizedAssets.map((asset) => [asset.ticker, total > 0 ? asset.current / total : 0]),
+    );
+    const targetWeights = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset.target]));
+    const currentRisk = calculateRiskMetrics(buildPortfolioIndexSeries(currentWeights));
+    const targetRisk = calculateRiskMetrics(buildPortfolioIndexSeries(targetWeights));
+    const currentCagr = calculateExpectedCagr(normalizedAssets);
+    const targetCagr = calculateTargetExpectedCagr(normalizedAssets);
+    const allocationAdvice = buildAllocationAdviceRows(normalizedAssets, currentWeights);
+    const allWithinBands = allocationAdvice.every((row) => row.bandStatus === "Within Band");
+    const riskDiagnostics = computeInsightRiskDiagnostics();
+
+    return {
+      generatedFrom: "portfolio-rebalancer-dashboard",
+      asOf: new Date().toISOString(),
+      contribution: state.contribution,
+      planMonths: state.planMonths,
+      totalCurrent: total,
+      advicePolicy: {
+        philosophy: [
+          "Long-term US ETF investing",
+          "Prefer DCA over market timing",
+          "SPY/QQQ are growth engines",
+          "GLD is a risk buffer and rebalancing source",
+          "SCHD is income/defensive equity, not the main growth asset",
+          "Use target bands rather than exact rigid percentages",
+        ],
+        targetBands: ADVICE_POLICY,
+        allWithinBands,
+      },
+      allocationAdvice,
+      assets: normalizedAssets.map((asset) => ({
+        ticker: asset.ticker,
+        current: Math.round(asset.current),
+        currentWeight: currentWeights[asset.ticker] || 0,
+        targetWeight: asset.target,
+        expectedCagr: state.expectedReturns[asset.ticker] || 0,
+        currentCagrContribution: (currentWeights[asset.ticker] || 0) * (state.expectedReturns[asset.ticker] || 0),
+        targetCagrContribution: asset.target * (state.expectedReturns[asset.ticker] || 0),
+      })),
+      firstMonthPlan: result.rows.map((row) => ({
+        ticker: row.ticker,
+        trade: Math.round(row.trade),
+        currentWeight: row.currentWeight,
+        afterWeight: row.afterWeight,
+        targetWeight: row.target,
+        gapAfter: row.gapAfter,
+      })),
+      actualTrades: { ...state.actualTrades },
+      risk: {
+        currentMdd: currentRisk.mdd,
+        currentSharpe: currentRisk.sharpe,
+        targetMdd: targetRisk.mdd,
+        targetSharpe: targetRisk.sharpe,
+      },
+      cagr: {
+        current: currentCagr,
+        target: targetCagr,
+        displayedCurrent: readText("topCurrentCagr"),
+        displayedTarget: readText("topTargetCagr"),
+      },
+      marketPulse: {
+        fearGreed: { value: readText("fearGreedValue"), label: readText("fearGreedLabel") },
+        buffett: { value: readText("buffettValue"), label: readText("buffettLabel") },
+        vix: { value: readText("vixValue"), label: readText("vixLabel") },
+      },
+      marketRegime: {
+        availableIndicators: {
+          buffettIndicator: readText("buffettValue") ? { value: readText("buffettValue"), label: readText("buffettLabel") } : null,
+          shillerCape: null,
+          usM2YoyGrowth: null,
+          us10yTreasuryYield: null,
+          us10yRealYield: null,
+        },
+        gldSpyCorrelation: riskDiagnostics.gldSpyCorrelation,
+        betasVsSpy: riskDiagnostics.betasVsSpy,
+      },
+      sourceRiskStatus: readText("sourceRiskStatus"),
+      monthlyReport: {
+        plannedNet: readText("reportPlannedNet"),
+        actualNet: readText("reportActualNet"),
+        netGap: readText("reportNetGap"),
+        nextTicker: readText("reportNextTicker"),
+        nextDetail: readText("reportNextDetail"),
+      },
+    };
+  }
+
+  function renderInsight(payload) {
+    const output = document.getElementById("insightOutput");
+    const generatedAt = document.getElementById("insightGeneratedAt");
+    if (!output) return;
+    const allocationAdvice = Array.isArray(payload?.allocationAdvice) ? payload.allocationAdvice : [];
+    const findings = Array.isArray(payload?.findings) ? payload.findings : [];
+    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+    const caveats = Array.isArray(payload?.caveats) ? payload.caveats : [];
+    output.innerHTML = `
+      <div class="insight-summary">${escapeHtml(payload?.summary || "요약을 생성하지 못했습니다.")}</div>
+      ${
+        allocationAdvice.length > 0
+          ? `<div class="insight-table-wrap">
+              <table class="insight-table">
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Current</th>
+                    <th>Target</th>
+                    <th>Diff</th>
+                    <th>Band</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${allocationAdvice
+                    .map(
+                      (row) => `
+                        <tr>
+                          <th>${escapeHtml(row.ticker)}</th>
+                          <td>${escapeHtml(row.currentAllocation)}</td>
+                          <td>${escapeHtml(row.targetAllocation)}</td>
+                          <td>${escapeHtml(row.differenceFromTarget)}</td>
+                          <td><span class="band-status ${escapeHtml(String(row.bandStatus || "").toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(row.bandStatus)}</span></td>
+                          <td>${escapeHtml(row.actionRecommendation)}</td>
+                        </tr>
+                      `,
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+            </div>`
+          : ""
+      }
+      <div class="insight-columns">
+        <div>
+          <h3>Findings</h3>
+          <ul>${findings.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>특이사항 없음</li>"}</ul>
+        </div>
+        <div>
+          <h3>Suggestions</h3>
+          <ul>${suggestions.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>제안 없음</li>"}</ul>
+        </div>
+      </div>
+      ${payload?.plainKoreanSummary ? `<div class="insight-plain-summary">${escapeHtml(payload.plainKoreanSummary)}</div>` : ""}
+      ${caveats.length > 0 ? `<div class="insight-caveats">${caveats.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    `;
+    if (generatedAt && payload?.generatedAt) {
+      generatedAt.textContent = new Date(payload.generatedAt).toLocaleString("ko-KR");
+    }
+  }
+
+  async function generateInsight() {
+    const button = document.getElementById("generateInsightButton");
+    const status = document.getElementById("insightStatus");
+    const output = document.getElementById("insightOutput");
+    if (!INSIGHTS_URL || !button || !status || !output) return;
+    button.disabled = true;
+    status.textContent = "인사이트 생성 중...";
+    output.innerHTML = `<div class="insight-empty">Analyzing current dashboard...</div>`;
+    try {
+      const response = await fetch(INSIGHTS_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildInsightPayload()),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+      renderInsight(payload);
+      status.textContent = "현재 화면 기준 인사이트";
+    } catch (error) {
+      status.textContent = "인사이트 생성 실패";
+      const message = /quota|billing/i.test(error.message)
+        ? "OpenAI API quota 또는 billing 설정을 확인해 주세요. 설정이 완료되면 이 버튼으로 바로 인사이트를 생성할 수 있습니다."
+        : error.message;
+      output.innerHTML = `<div class="insight-error">${escapeHtml(message)}</div>`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function setText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  }
+
+  function formatSignedMoney(value) {
+    const rounded = Math.round(Number(value) || 0);
+    const sign = rounded > 0 ? "+" : "";
+    return `${sign}${rounded.toLocaleString("ko-KR")}만원`;
+  }
+
+  function formatRiskPercent(value) {
+    return `${(Number(value || 0) * 100).toFixed(1)}%`;
+  }
+
+  function buildWeightsFromAssets(assets) {
+    const total = assets.reduce((sum, asset) => sum + Math.max(0, Number(asset.current) || 0), 0);
+    return Object.fromEntries(
+      assets.map((asset) => [asset.ticker, total > 0 ? Math.max(0, Number(asset.current) || 0) / total : 0]),
+    );
+  }
+
+  function renderMonthlyReport(result, normalizedAssets) {
+    const monthLabel = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+    setText("monthlyReportDate", `${monthLabel} 기준`);
+
+    const plannedBuy = result.rows.reduce((sum, row) => sum + Math.max(0, row.trade), 0);
+    const plannedSell = result.rows.reduce((sum, row) => sum + Math.max(0, -row.trade), 0);
+    const plannedNet = plannedBuy - plannedSell;
+    const actualBuy = result.rows.reduce((sum, row) => sum + Math.max(0, combinedActualTrade(row.ticker)), 0);
+    const actualSell = result.rows.reduce((sum, row) => sum + Math.max(0, -combinedActualTrade(row.ticker)), 0);
+    const actualNet = actualBuy - actualSell;
+    const netGap = actualNet - plannedNet;
+    const adherence = plannedNet !== 0 ? Math.max(0, Math.min(999, (actualNet / plannedNet) * 100)) : 0;
+
+    setText("reportPlannedNet", formatMoney(plannedNet));
+    setText("reportPlanDetail", `매수 ${formatMoney(plannedBuy)} / 축소 ${formatMoney(plannedSell)}`);
+    setText("reportActualNet", formatMoney(actualNet));
+    setText("reportActualDetail", `매수 ${formatMoney(actualBuy)} / 축소 ${formatMoney(actualSell)}`);
+    setText("reportNetGap", formatSignedMoney(netGap));
+    setText("reportAdherence", `진행률 ${adherence.toFixed(1)}%`);
+
+    const actualAssets = normalizedAssets.map((asset) => ({
+      ...asset,
+      current: Math.max(0, asset.current + combinedActualTrade(asset.ticker)),
+    }));
+    const actualWeights = buildWeightsFromAssets(actualAssets);
+
+    const nextRow = normalizedAssets
+      .map((asset) => ({
+        ticker: asset.ticker,
+        gap: (actualWeights[asset.ticker] || 0) - asset.target,
+      }))
+      .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0];
+    setText("reportNextTicker", nextRow?.ticker || "--");
+    setText("reportNextDetail", nextRow ? `목표 대비 ${formatPercent(nextRow.gap)}` : "목표 대비 차이 --");
+
+    renderSourceRiskRows();
   }
 
   function renderCagr() {
@@ -708,6 +1296,7 @@
     if (!row) return false;
     state.assets = state.assets.map((asset) => ({ ...asset, current: row[asset.ticker] ?? asset.current }));
     state.recentCurrentTotals = Array.isArray(row.recentCurrentTotals) ? row.recentCurrentTotals.slice(-6) : [];
+    state.sourceSnapshots = Array.isArray(row.sourceSnapshots) ? row.sourceSnapshots : [];
     renderInputs();
     bindAssetInputs();
     render();
@@ -951,6 +1540,84 @@
     });
   }
 
+  function buildPortfolioIndexSeriesWithCash(weightsByTicker, cashWeight = 0) {
+    const tickers = Object.keys(weightsByTicker || {}).filter((ticker) => Number(weightsByTicker[ticker]) > 0);
+    if (tickers.length === 0) return [];
+    if (tickers.some((ticker) => !Array.isArray(state.trend30[ticker]?.points) || state.trend30[ticker].points.length < 2)) {
+      return [];
+    }
+
+    const baseByTicker = {};
+    const mapByTicker = {};
+    tickers.forEach((ticker) => {
+      const points = state.trend30[ticker].points;
+      baseByTicker[ticker] = Number(points[0].close);
+      mapByTicker[ticker] = new Map(
+        points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+
+    const baseDates = state.trend30[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => mapByTicker[ticker].has(date)));
+    if (commonDates.length < 2) return [];
+
+    return commonDates.map((date) => {
+      const riskyValue = tickers.reduce((sum, ticker) => {
+        const base = baseByTicker[ticker];
+        const close = mapByTicker[ticker].get(date);
+        const ratio = Number.isFinite(base) && base > 0 && Number.isFinite(close) ? close / base : 0;
+        return sum + (Number(weightsByTicker[ticker]) || 0) * ratio;
+      }, 0);
+      return { date, close: (Math.max(0, Number(cashWeight) || 0) + riskyValue) * 100 };
+    });
+  }
+
+  function buildPortfolioIndexSeriesUntil(weightsByTicker, endDate, historyByTicker = state.sourceRiskHistory) {
+    const tickers = Object.keys(weightsByTicker || {}).filter((ticker) => Number(weightsByTicker[ticker]) > 0);
+    if (tickers.length === 0) return [];
+    if (tickers.some((ticker) => !Array.isArray(historyByTicker[ticker]?.points) || historyByTicker[ticker].points.length < 2)) {
+      return [];
+    }
+
+    const endTime = endDate instanceof Date ? endDate.getTime() : new Date(endDate).getTime();
+    if (!Number.isFinite(endTime)) return [];
+
+    const mapByTicker = {};
+    tickers.forEach((ticker) => {
+      mapByTicker[ticker] = new Map(
+        historyByTicker[ticker].points
+          .filter((point) => {
+            const dateTime = new Date(`${String(point.date).slice(0, 10)}T00:00:00Z`).getTime();
+            return Number.isFinite(dateTime) && dateTime <= endTime && Number.isFinite(Number(point.close));
+          })
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+
+    const baseDates = historyByTicker[tickers[0]].points
+      .map((point) => String(point.date))
+      .filter((date) => mapByTicker[tickers[0]].has(date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => mapByTicker[ticker].has(date)));
+    if (commonDates.length < 2) return [];
+
+    const baseByTicker = {};
+    tickers.forEach((ticker) => {
+      baseByTicker[ticker] = mapByTicker[ticker].get(commonDates[0]);
+    });
+
+    return commonDates.map((date) => {
+      const value = tickers.reduce((sum, ticker) => {
+        const base = baseByTicker[ticker];
+        const close = mapByTicker[ticker].get(date);
+        const ratio = Number.isFinite(base) && base > 0 && Number.isFinite(close) ? close / base : 0;
+        return sum + (Number(weightsByTicker[ticker]) || 0) * ratio;
+      }, 0);
+      return { date, close: value * 100 };
+    });
+  }
+
   function calculateRiskMetrics(series) {
     if (!Array.isArray(series) || series.length < 2) return { mdd: 0, sharpe: 0 };
     const values = series.map((point) => Number(point.close)).filter((v) => Number.isFinite(v) && v > 0);
@@ -975,6 +1642,184 @@
     const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
 
     return { mdd, sharpe };
+  }
+
+  function calculateCagrFromSeries(series) {
+    if (!Array.isArray(series) || series.length < 2) return null;
+    const first = series[0];
+    const last = series[series.length - 1];
+    const firstClose = Number(first.close);
+    const lastClose = Number(last.close);
+    const firstDate = new Date(`${String(first.date).slice(0, 10)}T00:00:00Z`);
+    const lastDate = new Date(`${String(last.date).slice(0, 10)}T00:00:00Z`);
+    const years = (lastDate - firstDate) / (365.25 * 24 * 60 * 60 * 1000);
+    if (!Number.isFinite(firstClose) || firstClose <= 0 || !Number.isFinite(lastClose) || !Number.isFinite(years) || years <= 0) {
+      return null;
+    }
+    const growth = lastClose / firstClose;
+    return growth > 0 ? Math.pow(growth, 1 / years) - 1 : null;
+  }
+
+  function calculateSourceSnapshotRisk(rows, valueKey = "total") {
+    if (!Array.isArray(rows) || rows.length < 2) return null;
+    const values = rows.map((row) => Number(row[valueKey])).filter((value) => Number.isFinite(value) && value > 0);
+    if (values.length < 2) return null;
+
+    let peak = values[0];
+    let mdd = 0;
+    values.forEach((value) => {
+      peak = Math.max(peak, value);
+      mdd = Math.min(mdd, peak > 0 ? value / peak - 1 : 0);
+    });
+
+    const returns = [];
+    const intervals = [];
+    for (let index = 1; index < rows.length; index += 1) {
+      const prev = Number(rows[index - 1][valueKey]);
+      const next = Number(rows[index][valueKey]);
+      if (Number.isFinite(prev) && prev > 0 && Number.isFinite(next) && next > 0) {
+        returns.push(next / prev - 1);
+      }
+      const prevDate = rows[index - 1].date instanceof Date ? rows[index - 1].date : new Date(rows[index - 1].date);
+      const nextDate = rows[index].date instanceof Date ? rows[index].date : new Date(rows[index].date);
+      const intervalDays = (nextDate - prevDate) / (24 * 60 * 60 * 1000);
+      if (Number.isFinite(intervalDays) && intervalDays > 0) intervals.push(intervalDays);
+    }
+    if (returns.length < 2) return { mdd, sharpe: 0, count: rows.length };
+
+    const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+    const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, returns.length - 1);
+    const std = Math.sqrt(variance);
+    const avgInterval = intervals.length > 0 ? intervals.reduce((sum, value) => sum + value, 0) / intervals.length : 30;
+    const periodsPerYear = Math.max(1, 365 / avgInterval);
+    const sharpe = std > 0 ? (mean / std) * Math.sqrt(periodsPerYear) : 0;
+    return { mdd, sharpe, count: rows.length };
+  }
+
+  function getSourceRiskForWindow(days, endIndex = state.sourceSnapshots.length - 1) {
+    const snapshots = state.sourceSnapshots || [];
+    if (endIndex < 1 || !snapshots[endIndex]) return null;
+    const endDate = snapshots[endIndex].date instanceof Date ? snapshots[endIndex].date : new Date(snapshots[endIndex].date);
+    const startTime = endDate.getTime() - days * 24 * 60 * 60 * 1000;
+    const rows = snapshots
+      .slice(0, endIndex + 1)
+      .filter((row) => {
+        const date = row.date instanceof Date ? row.date : new Date(row.date);
+        return date.getTime() >= startTime && date.getTime() <= endDate.getTime();
+      });
+    return calculateSourceSnapshotRisk(rows);
+  }
+
+  function formatSignedPoint(value) {
+    if (!Number.isFinite(value)) return "--";
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${value.toFixed(1)}%p`;
+  }
+
+  function formatSignedNumber(value) {
+    if (!Number.isFinite(value)) return "--";
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${value.toFixed(3)}`;
+  }
+
+  function buildSourceRiskTrendPoints() {
+    const snapshots = (state.sourceSnapshots || []).filter((snapshot) => Number(snapshot.invested) > 0);
+    return snapshots
+      .map((snapshot) => {
+        const invested = Number(snapshot.invested) || 0;
+        const weights = {
+          SPY: Number(snapshot.SPY || 0) / invested,
+          QQQ: Number(snapshot.QQQ || 0) / invested,
+          SCHD: Number(snapshot.SCHD || 0) / invested,
+          GLD: Number(snapshot.GLD || 0) / invested,
+        };
+        const series = buildPortfolioIndexSeriesUntil(weights, snapshot.date);
+        const metrics = calculateRiskMetrics(series);
+        const cagr = calculateCagrFromSeries(series);
+        if (!Number.isFinite(cagr)) return null;
+        return {
+          date: snapshot.dateLabel || formatShortDate(snapshot.date),
+          mdd: metrics.mdd * 100,
+          cagr: cagr * 100,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function hasSourceRiskHistory() {
+    return ["SPY", "QQQ", "SCHD", "GLD"].every(
+      (ticker) => Array.isArray(state.sourceRiskHistory[ticker]?.points) && state.sourceRiskHistory[ticker].points.length >= 2,
+    );
+  }
+
+  function renderSourceRiskChart(title, points, field, formatter, color) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return `
+        <div class="source-risk-card">
+          <div class="source-risk-head"><strong>${title}</strong><span>데이터 부족</span></div>
+          <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none"></svg>
+          <div class="source-risk-meta">원본 스냅샷 2개 이상 필요</div>
+        </div>
+      `;
+    }
+    const series = points.map((point) => ({ date: point.date, close: Number(point[field]) }));
+    const model = buildTrendCoordinates(series, 280, 64, 5);
+    if (!model) {
+      return `
+        <div class="source-risk-card">
+          <div class="source-risk-head"><strong>${title}</strong><span>데이터 부족</span></div>
+          <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none"></svg>
+          <div class="source-risk-meta">계산 가능한 값 없음</div>
+        </div>
+      `;
+    }
+    const pathData = model.coords
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+      .join(" ");
+    const latest = series[series.length - 1].close;
+    const first = series[0].close;
+    const delta = latest - first;
+    const deltaLabel = field === "mdd" || field === "cagr" ? formatSignedPoint(delta) : formatSignedNumber(delta);
+    return `
+      <div class="source-risk-card">
+        <div class="source-risk-head">
+          <strong>${title}</strong>
+          <span>${formatter(latest)} / ${deltaLabel}</span>
+        </div>
+        <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none">
+          <line x1="5" y1="${model.coords[0].y.toFixed(1)}" x2="275" y2="${model.coords[0].y.toFixed(1)}" stroke="#c6cfdb" stroke-width="1" stroke-dasharray="4 3"></line>
+          <path d="${pathData}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <div class="source-risk-axis">
+          <span>${series[0].date}</span>
+          <span>${series[series.length - 1].date}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSourceRiskRows() {
+    const container = document.getElementById("sourceRiskCharts");
+    const status = document.getElementById("sourceRiskStatus");
+    if (!container) return;
+    const snapshots = state.sourceSnapshots || [];
+    if (snapshots.length < 2) {
+      container.innerHTML = `<div class="source-risk-empty">시트 원본 스냅샷이 부족합니다.</div>`;
+      if (status) status.textContent = "시트 원본 스냅샷 기준";
+      return;
+    }
+
+    const latest = snapshots[snapshots.length - 1];
+    if (!hasSourceRiskHistory()) {
+      container.innerHTML = `<div class="source-risk-empty">가격 히스토리 불러오는 중...</div>`;
+      if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 대기";
+      return;
+    }
+    const points = buildSourceRiskTrendPoints();
+    if (status) status.textContent = `원본 날짜별 포트폴리오 MDD/CAGR 기준 (현금 제외) / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
+    container.innerHTML =
+      renderSourceRiskChart("MDD 변화", points, "mdd", (value) => `${value.toFixed(1)}%`, "#b94a48") +
+      renderSourceRiskChart("CAGR 변화", points, "cagr", (value) => `${value.toFixed(1)}%`, "#147c72");
   }
 
   function applyCalendarVisibility(visible) {
@@ -1010,6 +1855,39 @@
     }
   }
 
+  function applyInstitutionalVisibility(visible) {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("institutional-hidden", !visible);
+    const button = document.getElementById("toggleInstitutionalButton");
+    if (button) {
+      button.textContent = visible ? "13F" : "+13F";
+      button.title = visible ? "Hide 13F Panel" : "Show 13F Panel";
+      button.setAttribute("aria-label", visible ? "Hide 13F Panel" : "Show 13F Panel");
+    }
+  }
+
+  function loadSavedInstitutionalVisibility() {
+    let visible = true;
+    try {
+      const raw = localStorage.getItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY);
+      if (raw === "0") visible = false;
+      if (raw === "1") visible = true;
+    } catch {
+      // ignore storage errors
+    }
+    applyInstitutionalVisibility(visible);
+  }
+
+  function toggleInstitutionalVisibility() {
+    const nextVisible = document.body.classList.contains("institutional-hidden");
+    applyInstitutionalVisibility(nextVisible);
+    try {
+      localStorage.setItem(INSTITUTIONAL_VISIBLE_STORAGE_KEY, nextVisible ? "1" : "0");
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   function pearsonCorrelation(valuesA, valuesB) {
     if (!Array.isArray(valuesA) || !Array.isArray(valuesB)) return null;
     const length = Math.min(valuesA.length, valuesB.length);
@@ -1030,6 +1908,100 @@
     }
     if (varA <= 0 || varB <= 0) return null;
     return cov / Math.sqrt(varA * varB);
+  }
+
+  function betaAgainstBenchmark(assetReturns, benchmarkReturns) {
+    if (!Array.isArray(assetReturns) || !Array.isArray(benchmarkReturns)) return null;
+    const length = Math.min(assetReturns.length, benchmarkReturns.length);
+    if (length < 2) return null;
+    const a = assetReturns.slice(-length);
+    const b = benchmarkReturns.slice(-length);
+    const meanA = a.reduce((sum, v) => sum + v, 0) / length;
+    const meanB = b.reduce((sum, v) => sum + v, 0) / length;
+    let cov = 0;
+    let varB = 0;
+    for (let index = 0; index < length; index += 1) {
+      const da = a[index] - meanA;
+      const db = b[index] - meanB;
+      cov += da * db;
+      varB += db * db;
+    }
+    return varB > 0 ? cov / varB : null;
+  }
+
+  function buildAlignedDailyReturns(historyByTicker, tickers) {
+    if (tickers.some((ticker) => !Array.isArray(historyByTicker[ticker]?.points) || historyByTicker[ticker].points.length < 2)) {
+      return null;
+    }
+    const closeByTicker = {};
+    tickers.forEach((ticker) => {
+      closeByTicker[ticker] = new Map(
+        historyByTicker[ticker].points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+    const baseDates = historyByTicker[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => closeByTicker[ticker].has(date)));
+    if (commonDates.length < 3) return null;
+    const returns = {};
+    tickers.forEach((ticker) => {
+      const closes = commonDates.map((date) => closeByTicker[ticker].get(date));
+      returns[ticker] = [];
+      for (let index = 1; index < closes.length; index += 1) {
+        returns[ticker].push(closes[index] / closes[index - 1] - 1);
+      }
+    });
+    return { dates: commonDates.slice(1), returns };
+  }
+
+  function computeInsightRiskDiagnostics() {
+    const tickers = ["GLD", "SCHD", "SPY", "QQQ"];
+    const aligned = buildAlignedDailyReturns(state.sourceRiskHistory, tickers);
+    if (!aligned) {
+      return {
+        gldSpyCorrelation: { available: false },
+        betasVsSpy: { available: false },
+      };
+    }
+    const gldReturns = aligned.returns.GLD;
+    const spyReturns = aligned.returns.SPY;
+    const windows = [30, 90, 180, 365];
+    const correlations = {};
+    windows.forEach((window) => {
+      const length = Math.min(window, gldReturns.length, spyReturns.length);
+      correlations[`${window}d`] =
+        length >= 2 ? pearsonCorrelation(gldReturns.slice(-length), spyReturns.slice(-length)) : null;
+    });
+    const corr30 = correlations["30d"];
+    const corr180 = correlations["180d"];
+    const expansion = Number.isFinite(corr30) && Number.isFinite(corr180) ? corr30 - corr180 : null;
+    const betaWindow = Math.min(365, spyReturns.length);
+    const betas = {};
+    ["GLD", "QQQ", "SCHD"].forEach((ticker) => {
+      const assetReturns = aligned.returns[ticker] || [];
+      betas[ticker] =
+        betaWindow >= 2 ? betaAgainstBenchmark(assetReturns.slice(-betaWindow), spyReturns.slice(-betaWindow)) : null;
+    });
+    return {
+      gldSpyCorrelation: {
+        available: true,
+        correlations,
+        expansion30dVs180d: expansion,
+        interpretation:
+          Number.isFinite(expansion) && expansion > 0.3
+            ? "Short-term correlation spike"
+            : Number.isFinite(expansion) && expansion > 0.2
+              ? "Recent diversification benefit weakened"
+              : "No major short-term correlation expansion",
+      },
+      betasVsSpy: {
+        available: true,
+        windowDays: betaWindow,
+        values: betas,
+        note: "Correlation shows direction similarity; beta shows sensitivity to SPY moves.",
+      },
+    };
   }
 
   function computePairCorrelations() {
@@ -1243,6 +2215,7 @@
     const status = document.getElementById("trendStatus");
     if (status) status.textContent = "데이터 불러오는 중...";
     const next = {};
+    const sourceRiskNext = {};
     const failures = [];
 
     for (const asset of state.assets) {
@@ -1253,9 +2226,17 @@
       } catch (error) {
         failures.push(`${asset.ticker}: ${error.message}`);
       }
+      try {
+        const response = await fetch(`${HISTORY_URL}?ticker=${encodeURIComponent(asset.ticker)}&mode=trend&days=365`);
+        if (!response.ok) throw new Error(`${asset.ticker} source HTTP ${response.status}`);
+        sourceRiskNext[asset.ticker] = await response.json();
+      } catch (error) {
+        failures.push(`${asset.ticker} source: ${error.message}`);
+      }
     }
 
     state.trend30 = { ...state.trend30, ...next };
+    state.sourceRiskHistory = { ...state.sourceRiskHistory, ...sourceRiskNext };
     if (status) {
       status.textContent = failures.length === 0 ? `Recent ${state.trendWindow} trading days` : `Partial failure: ${failures.join(", ")}`;
     }
@@ -1479,7 +2460,20 @@
     if (toggleCalendarButton) {
       toggleCalendarButton.addEventListener("click", toggleCalendarVisibility);
     }
+    const toggleInstitutionalButton = document.getElementById("toggleInstitutionalButton");
+    if (toggleInstitutionalButton) {
+      toggleInstitutionalButton.addEventListener("click", toggleInstitutionalVisibility);
+    }
+    const saveActualTradesButton = document.getElementById("saveActualTradesButton");
+    if (saveActualTradesButton) {
+      saveActualTradesButton.addEventListener("click", saveActualTradesToServer);
+    }
+    const generateInsightButton = document.getElementById("generateInsightButton");
+    if (generateInsightButton) {
+      generateInsightButton.addEventListener("click", generateInsight);
+    }
     loadSavedCalendarVisibility();
+    loadSavedInstitutionalVisibility();
 
     document.getElementById("loadSheetButton").addEventListener("click", loadSheet);
     document.getElementById("loadHistoryButton").addEventListener("click", loadHistoricalReturns);
@@ -1488,6 +2482,7 @@
     loadTrendWindow();
     loadMarketPulse();
     loadInstitutionalHoldings();
+    loadActualTradesFromServer().then(syncActualTradesFromTransactionRecord);
   }
 
   if (typeof module !== "undefined") {
