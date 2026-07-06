@@ -15,6 +15,11 @@ const marketPulseCache = { data: null, cachedAt: 0 };
 const institutionalCache = { data: null, cachedAt: 0 };
 let actualTradesMemoryRecord = null;
 const MARKET_PULSE_TIMEOUT_MS = 8000;
+const BUFFETT_FALLBACK = {
+  value: 194.889,
+  updatedAt: "2020-01-01",
+  source: "FRED DDDM01USA156NWDB fallback",
+};
 const INSTITUTIONS = [
   { name: "Berkshire Hathaway", cik: "1067983" },
   { name: "Bridgewater Associates", cik: "1350694" },
@@ -519,6 +524,17 @@ function buildDailyTrend60(points) {
   return series;
 }
 
+function buildFlatTrend60(value) {
+  const today = new Date();
+  const points = [];
+  for (let index = 59; index >= 0; index -= 1) {
+    const day = new Date(today);
+    day.setUTCDate(today.getUTCDate() - index);
+    points.push({ date: day.toISOString().slice(0, 10), value });
+  }
+  return points;
+}
+
 function extractFearGreedTrend(payload) {
   const historical =
     payload?.fear_and_greed_historical?.data ||
@@ -541,12 +557,22 @@ function extractFearGreedTrend(payload) {
 }
 
 function classifyBuffettIndicator(value) {
-  if (!Number.isFinite(value)) return "Unknown";
-  if (value < 75) return "Undervalued";
-  if (value < 90) return "Fair";
-  if (value < 115) return "Slightly Overvalued";
-  if (value < 140) return "Overvalued";
-  return "Significantly Overvalued";
+  if (!Number.isFinite(value)) return "알 수 없음";
+  if (value < 75) return "저평가";
+  if (value < 90) return "적정";
+  if (value < 115) return "약간 고평가";
+  if (value < 140) return "고평가";
+  return "매우 고평가";
+}
+
+function normalizeFearGreedLabel(label) {
+  const key = String(label || "").trim().toLowerCase();
+  if (key.includes("extreme fear")) return "극단적 공포";
+  if (key === "fear" || key.includes("fear")) return "공포";
+  if (key === "neutral" || key.includes("neutral")) return "중립";
+  if (key.includes("extreme greed")) return "극단적 탐욕";
+  if (key === "greed" || key.includes("greed")) return "탐욕";
+  return label || "N/A";
 }
 
 async function fetchFearGreedIndex() {
@@ -567,7 +593,7 @@ async function fetchFearGreedIndex() {
   const avg60 = trend60.length > 0 ? trend60.reduce((sum, point) => sum + point.value, 0) / trend60.length : value;
   return {
     value,
-    label: root?.rating || root?.status || "N/A",
+    label: normalizeFearGreedLabel(root?.rating || root?.status || "N/A"),
     trend60,
     avg60,
     updatedAt: root?.timestamp || payload?.timestamp || null,
@@ -636,10 +662,10 @@ async function fetchBuffettIndicator() {
 
 function classifyVix(value) {
   if (!Number.isFinite(value)) return "N/A";
-  if (value < 15) return "Low Volatility";
-  if (value < 25) return "Normal Volatility";
-  if (value < 35) return "Elevated Volatility";
-  return "High Volatility";
+  if (value < 15) return "낮은 변동성";
+  if (value < 25) return "보통 변동성";
+  if (value < 35) return "높아진 변동성";
+  return "높은 변동성";
 }
 
 async function fetchVixIndicator() {
@@ -693,7 +719,18 @@ async function fetchMarketPulse() {
   });
   return {
     fearGreed: entries[0].status === "fulfilled" ? entries[0].value : fallback("CNN Fear & Greed Index", entries[0]),
-    buffett: entries[1].status === "fulfilled" ? entries[1].value : fallback("FRED Buffett Indicator", entries[1]),
+    buffett:
+      entries[1].status === "fulfilled"
+        ? entries[1].value
+        : {
+            value: BUFFETT_FALLBACK.value,
+            label: `${classifyBuffettIndicator(BUFFETT_FALLBACK.value)} (최근 확인값)`,
+            trend60: buildFlatTrend60(BUFFETT_FALLBACK.value),
+            avg60: BUFFETT_FALLBACK.value,
+            updatedAt: BUFFETT_FALLBACK.updatedAt,
+            source: BUFFETT_FALLBACK.source,
+            warning: entries[1].reason?.message || "Live Buffett Indicator unavailable",
+          },
     vix: entries[2].status === "fulfilled" ? entries[2].value : fallback("Yahoo Finance VIX", entries[2]),
   };
 }
