@@ -14,6 +14,7 @@ const historyCache = new Map();
 const marketPulseCache = { data: null, cachedAt: 0 };
 const institutionalCache = { data: null, cachedAt: 0 };
 let actualTradesMemoryRecord = null;
+const MARKET_PULSE_TIMEOUT_MS = 8000;
 const INSTITUTIONS = [
   { name: "Berkshire Hathaway", cik: "1067983" },
   { name: "Bridgewater Associates", cik: "1350694" },
@@ -44,6 +45,16 @@ function loadLocalEnv() {
 }
 
 loadLocalEnv();
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = MARKET_PULSE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function send(response, status, body, type = "text/plain; charset=utf-8") {
   response.writeHead(status, { "content-type": type, "cache-control": "no-store" });
@@ -539,7 +550,7 @@ function classifyBuffettIndicator(value) {
 }
 
 async function fetchFearGreedIndex() {
-  const response = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+  const response = await fetchWithTimeout("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
     headers: {
       "user-agent": "Mozilla/5.0 portfolio-rebalancer",
       accept: "application/json",
@@ -573,7 +584,7 @@ async function fetchYahooDailyProxyTrend(ticker, latestValue, days = 60) {
 
   for (const url of urls) {
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: {
           "user-agent": "Mozilla/5.0 portfolio-rebalancer",
           accept: "application/json",
@@ -598,7 +609,7 @@ async function fetchYahooDailyProxyTrend(ticker, latestValue, days = 60) {
 }
 
 async function fetchBuffettIndicator() {
-  const response = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DDDM01USA156NWDB");
+  const response = await fetchWithTimeout("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DDDM01USA156NWDB");
   if (!response.ok) throw new Error(`FRED returned ${response.status}`);
   const rows = parseFredCsv(await response.text());
   const latest = rows.at(-1);
@@ -640,7 +651,7 @@ async function fetchVixIndicator() {
 
   for (const url of urls) {
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: {
           "user-agent": "Mozilla/5.0 portfolio-rebalancer",
           accept: "application/json",
@@ -670,8 +681,21 @@ async function fetchVixIndicator() {
 }
 
 async function fetchMarketPulse() {
-  const [fearGreed, buffett, vix] = await Promise.all([fetchFearGreedIndex(), fetchBuffettIndicator(), fetchVixIndicator()]);
-  return { fearGreed, buffett, vix };
+  const entries = await Promise.allSettled([fetchFearGreedIndex(), fetchBuffettIndicator(), fetchVixIndicator()]);
+  const fallback = (name, result) => ({
+    value: null,
+    label: "불러오기 실패",
+    trend60: [],
+    avg60: null,
+    updatedAt: null,
+    source: name,
+    error: result.reason?.message || "Unavailable",
+  });
+  return {
+    fearGreed: entries[0].status === "fulfilled" ? entries[0].value : fallback("CNN Fear & Greed Index", entries[0]),
+    buffett: entries[1].status === "fulfilled" ? entries[1].value : fallback("FRED Buffett Indicator", entries[1]),
+    vix: entries[2].status === "fulfilled" ? entries[2].value : fallback("Yahoo Finance VIX", entries[2]),
+  };
 }
 
 const TRANSACTION_RECORD_SUPABASE_URL =

@@ -106,6 +106,11 @@
     return `${value.toFixed(1)}%`;
   }
 
+  function parseOptionalNumber(value) {
+    if (value === null || value === undefined || value === "") return NaN;
+    return Number(value);
+  }
+
   function formatShortDate(dateText) {
     const parsed = new Date(`${String(dateText || "").slice(0, 10)}T00:00:00Z`);
     if (Number.isNaN(parsed.getTime())) return "--";
@@ -2349,9 +2354,9 @@
     fearValue.textContent = "--";
     buffettValue.textContent = "--";
     vixValue.textContent = "--";
-    fearLabel.textContent = "Loading...";
-    buffettLabel.textContent = "Loading...";
-    vixLabel.textContent = "Loading...";
+    fearLabel.textContent = "불러오는 중...";
+    buffettLabel.textContent = "불러오는 중...";
+    vixLabel.textContent = "불러오는 중...";
 
     try {
       const response = await fetch(MARKET_PULSE_URL);
@@ -2361,7 +2366,11 @@
       const bi = payload?.buffett || {};
       const vx = payload?.vix || {};
 
-      fearValue.textContent = Number.isFinite(Number(fg.value)) ? Math.round(Number(fg.value)).toString() : "--";
+      const fearNumber = parseOptionalNumber(fg.value);
+      const buffettNumber = parseOptionalNumber(bi.value);
+      const vixNumber = parseOptionalNumber(vx.value);
+
+      fearValue.textContent = Number.isFinite(fearNumber) ? Math.round(fearNumber).toString() : "--";
       fearLabel.textContent = fg.label || "N/A";
       renderPulseTrend("fearGreedTrend", "fearGreedAvg", fg.trend60, "#147c72", {
         start: "fearGreedDateStart",
@@ -2369,7 +2378,7 @@
         end: "fearGreedDateEnd",
       });
 
-      buffettValue.textContent = formatPulsePercent(Number(bi.value));
+      buffettValue.textContent = formatPulsePercent(buffettNumber);
       buffettLabel.textContent = bi.label || "N/A";
       renderPulseTrend("buffettTrend", "buffettAvg", bi.trend60, "#2f6fbb", {
         start: "buffettDateStart",
@@ -2377,7 +2386,7 @@
         end: "buffettDateEnd",
       });
 
-      vixValue.textContent = Number.isFinite(Number(vx.value)) ? Number(vx.value).toFixed(1) : "--";
+      vixValue.textContent = Number.isFinite(vixNumber) ? vixNumber.toFixed(1) : "--";
       vixLabel.textContent = vx.label || "N/A";
       renderPulseTrend("vixTrend", "vixAvg", vx.trend60, "#7b5d3a", {
         start: "vixDateStart",
@@ -2385,9 +2394,9 @@
         end: "vixDateEnd",
       });
     } catch {
-      fearLabel.textContent = "Unavailable";
-      buffettLabel.textContent = "Unavailable";
-      vixLabel.textContent = "Unavailable";
+      fearLabel.textContent = "불러오기 실패";
+      buffettLabel.textContent = "불러오기 실패";
+      vixLabel.textContent = "불러오기 실패";
       renderPulseTrend("fearGreedTrend", "fearGreedAvg", [], "#147c72", {
         start: "fearGreedDateStart",
         mid: "fearGreedDateMid",
