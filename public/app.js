@@ -1,9 +1,9 @@
 (function () {
   const TARGETS = [
-    { ticker: "GLD", target: 0.41, current: 7730 },
-    { ticker: "SCHD", target: 0.07, current: 3289 },
-    { ticker: "SPY", target: 0.22, current: 5918 },
-    { ticker: "QQQ", target: 0.30, current: 6431 },
+    { ticker: "GLD", target: 0.2, current: 7730 },
+    { ticker: "SCHD", target: 0.1, current: 3289 },
+    { ticker: "SPY", target: 0.3, current: 5918 },
+    { ticker: "QQQ", target: 0.4, current: 6431 },
   ];
 
   const SHEET_CSV_URL =
@@ -1108,7 +1108,7 @@
 
   function buildAiAdviceCacheKey(normalizedAssets, context = buildAdviceContext(normalizedAssets)) {
     const source = {
-      version: 2,
+      version: 3,
       contribution: Math.round(state.contribution),
       planMonths: state.planMonths,
       assets: normalizedAssets
@@ -1124,7 +1124,6 @@
         targetWeight: Number(row.targetWeight.toFixed(4)),
         bandStatus: row.bandStatus,
       })),
-      marketNotes: context.marketNotes,
     };
     return `band-advice-${hashString(JSON.stringify(source))}`;
   }
@@ -1201,18 +1200,20 @@
         return;
       }
       const advice = {
-        cacheKey,
+        cacheKey: payload.cacheKey || cacheKey,
         status: "ready",
         text: payload.text,
         generatedAt: payload.generatedAt,
         source: payload.source || "vercel-kv",
+        exact: payload.exact !== false,
       };
       state.aiAdvice = advice;
-      saveAiAdviceLocally(advice);
+      if (advice.exact) saveAiAdviceLocally(advice);
       if (status) {
+        const savedLabel = advice.exact ? "Vercel 저장값" : "Vercel 최근 생성값";
         status.textContent = advice.generatedAt
-          ? `${new Date(advice.generatedAt).toLocaleString("ko-KR")} · Vercel 저장값`
-          : "Vercel 저장값";
+          ? `${new Date(advice.generatedAt).toLocaleString("ko-KR")} · ${savedLabel}`
+          : savedLabel;
       }
       renderBandAdvice(normalizedAssets);
     } catch {
@@ -1673,6 +1674,12 @@
       const raw = localStorage.getItem(TARGET_STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
+      const legacyDefault =
+        Number(parsed?.GLD) === 41 && Number(parsed?.SCHD) === 7 && Number(parsed?.SPY) === 22 && Number(parsed?.QQQ) === 30;
+      if (legacyDefault) {
+        localStorage.removeItem(TARGET_STORAGE_KEY);
+        return;
+      }
       state.assets = state.assets.map((asset) => {
         const percent = Number(parsed?.[asset.ticker]);
         if (!Number.isFinite(percent)) return asset;
