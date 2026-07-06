@@ -1315,15 +1315,116 @@
     renderCorrelationGrid();
   }
 
+  function buildSimulationChartSvg(months, normalizedAssets) {
+    const width = 420;
+    const height = 178;
+    const pad = { top: 18, right: 50, bottom: 28, left: 34 };
+    const plotWidth = width - pad.left - pad.right;
+    const plotHeight = height - pad.top - pad.bottom;
+    const tickers = normalizedAssets.map((asset) => asset.ticker);
+    const currentTotal = normalizedAssets.reduce((sum, asset) => sum + asset.current, 0);
+    const data = [
+      {
+        month: 0,
+        weights: Object.fromEntries(
+          normalizedAssets.map((asset) => [asset.ticker, currentTotal > 0 ? asset.current / currentTotal : 0]),
+        ),
+      },
+      ...months.map((month) => ({
+        month: month.month,
+        weights: Object.fromEntries(month.rows.map((row) => [row.ticker, row.afterWeight])),
+      })),
+    ];
+
+    const maxObserved = Math.max(
+      0.4,
+      ...normalizedAssets.map((asset) => asset.target),
+      ...data.flatMap((point) => tickers.map((ticker) => point.weights[ticker] || 0)),
+    );
+    const yMax = Math.min(0.7, Math.max(0.45, Math.ceil(maxObserved * 20) / 20));
+    const xFor = (index) => pad.left + (data.length <= 1 ? 0 : (index / (data.length - 1)) * plotWidth);
+    const yFor = (value) => pad.top + (1 - value / yMax) * plotHeight;
+
+    const gridLines = [0, yMax / 2, yMax]
+      .map((value) => {
+        const y = yFor(value);
+        return `
+          <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(width - pad.right).toFixed(1)}" y2="${y.toFixed(1)}" class="simulation-grid-line"></line>
+          <text x="${pad.left - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="simulation-axis-label">${(value * 100).toFixed(0)}%</text>
+        `;
+      })
+      .join("");
+
+    const xLabels = data
+      .map((point, index) => {
+        const x = xFor(index);
+        const label = point.month === 0 ? "현재" : `${point.month}M`;
+        return `<text x="${x.toFixed(1)}" y="${height - 8}" text-anchor="middle" class="simulation-axis-label">${label}</text>`;
+      })
+      .join("");
+
+    const lines = tickers
+      .map((ticker) => {
+        const color = ASSET_COLORS[ticker] || "#8190a3";
+        const points = data
+          .map((point, index) => `${xFor(index).toFixed(1)},${yFor(point.weights[ticker] || 0).toFixed(1)}`)
+          .join(" ");
+        const latest = data[data.length - 1]?.weights[ticker] || 0;
+        const labelX = width - pad.right + 8;
+        const labelY = yFor(latest) + 4;
+        const dots = data
+          .map((point, index) => {
+            const x = xFor(index);
+            const y = yFor(point.weights[ticker] || 0);
+            return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="${color}"></circle>`;
+          })
+          .join("");
+        return `
+          <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+          ${dots}
+          <text x="${labelX}" y="${labelY.toFixed(1)}" class="simulation-line-label" fill="${color}">${ticker}</text>
+        `;
+      })
+      .join("");
+
+    return `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="월별 목표 비중 수렴 경로">
+        ${gridLines}
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" class="simulation-axis-line"></line>
+        <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" class="simulation-axis-line"></line>
+        ${lines}
+        ${xLabels}
+      </svg>
+    `;
+  }
+
   function renderSimulation() {
     const normalizedAssets = normalizeAssetsByTarget(state.assets);
     const months = simulateRebalancing(normalizedAssets, state.contribution);
     const summary = document.getElementById("simulationSummary");
     const list = document.getElementById("simulationList");
+    const chart = document.getElementById("simulationChart");
+    const legend = document.getElementById("simulationLegend");
 
     if (!summary || !list) return;
 
     summary.textContent = `${state.planMonths}개월차에 목표 비중 도달`;
+    if (chart) {
+      chart.innerHTML = buildSimulationChartSvg(months, normalizedAssets);
+    }
+    if (legend) {
+      legend.innerHTML = normalizedAssets
+        .map(
+          (asset) => `
+            <span>
+              <i style="background:${ASSET_COLORS[asset.ticker] || "#8190a3"}"></i>
+              ${escapeHtml(asset.ticker)}
+              <em>목표 ${escapeHtml(formatPercent(asset.target))}</em>
+            </span>
+          `,
+        )
+        .join("");
+    }
 
     list.innerHTML = "";
     list.style.setProperty("--simulation-count", String(months.length || 1));

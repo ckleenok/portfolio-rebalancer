@@ -1379,13 +1379,77 @@ input:focus {
 }
 
 .simulator-panel {
-  margin-top: 14px;
+  margin-top: 16px;
+}
+
+.simulation-chart {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 8px;
+}
+
+.simulation-chart svg {
+  display: block;
+  width: 100%;
+  height: 178px;
+}
+
+.simulation-grid-line {
+  stroke: #d8e0ea;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.simulation-axis-line {
+  stroke: #9aa6b5;
+  stroke-width: 1;
+}
+
+.simulation-axis-label,
+.simulation-line-label {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.simulation-line-label {
+  font-size: 9px;
+}
+
+.simulation-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.simulation-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.simulation-legend em {
+  font-style: normal;
+  color: var(--muted);
 }
 
 .simulation-list {
   display: grid;
   grid-template-columns: repeat(var(--simulation-count, 4), minmax(240px, 1fr));
   gap: 10px;
+  margin-top: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
   scroll-snap-type: x proximity;
