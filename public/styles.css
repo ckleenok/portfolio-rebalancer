@@ -252,7 +252,8 @@ body.institutional-hidden .institutional-rail {
 .insight-actions span,
 .insight-empty,
 .insight-error,
-.insight-caveats {
+.insight-caveats,
+.insight-disclaimer {
   color: var(--muted);
   font-size: 12px;
 }
@@ -265,6 +266,56 @@ body.institutional-hidden .institutional-rail {
   color: var(--ink);
   font-size: 14px;
   font-weight: 700;
+}
+
+.insight-table-wrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.insight-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.insight-table th,
+.insight-table td {
+  border-top: 1px solid var(--line);
+  padding: 8px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.insight-table thead th {
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.insight-table tbody th {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.band-status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #edf2f7;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.band-status.within-band {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.band-status.underweight,
+.band-status.overweight {
+  background: #fff7e7;
+  color: #70531b;
 }
 
 .insight-columns {
@@ -304,8 +355,21 @@ body.institutional-hidden .institutional-rail {
   background: #fbfcfd;
 }
 
+.insight-plain-summary {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .insight-error {
   color: var(--red);
+}
+
+.insight-disclaimer {
+  margin-top: 10px;
 }
 
 .market-pulse {

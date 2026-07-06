@@ -56,6 +56,12 @@
   const MANUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-manual-trades-v1";
   const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
   const ACTUAL_TRADE_TICKERS = ["GLD", "SCHD", "SPY", "QQQ"];
+  const ADVICE_POLICY = {
+    SCHD: { target: 0.1, min: 0.08, max: 0.12 },
+    GLD: { target: 0.2, min: 0.18, max: 0.25 },
+    SPY: { target: 0.3, min: 0.27, max: 0.33 },
+    QQQ: { target: 0.4, min: 0.37, max: 0.43 },
+  };
 
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -881,6 +887,78 @@
     return document.getElementById(id)?.textContent?.trim() || "";
   }
 
+  function formatBandPercent(value) {
+    return `${(Number(value || 0) * 100).toFixed(0)}%`;
+  }
+
+  function getBandStatus(ticker, weight) {
+    const band = ADVICE_POLICY[ticker];
+    if (!band) return "Within Band";
+    if (weight < band.min) return "Underweight";
+    if (weight > band.max) return "Overweight";
+    return "Within Band";
+  }
+
+  function buildTickerActionRecommendation(ticker, weight, weightsByTicker) {
+    const band = ADVICE_POLICY[ticker];
+    const percent = formatBandPercent(weight);
+    if (!band) return "밴드 정보가 없습니다.";
+    if (ticker === "GLD") {
+      if (weight > band.max) {
+        const needsQqq = (weightsByTicker.QQQ || 0) < ADVICE_POLICY.QQQ.target;
+        const needsSpy = (weightsByTicker.SPY || 0) < ADVICE_POLICY.SPY.target;
+        if (needsQqq || needsSpy) {
+          return `GLD ${percent}는 방어 비중이 높은 상태입니다. 급하게 매도할 필요는 없고, GLD를 dry powder로 보면서 신규 매수/점진 축소 재원을 ${needsQqq ? "QQQ" : "SPY"}에 우선 배정하세요.`;
+        }
+        return `GLD ${percent}는 상단 밴드 위입니다. 버리는 자산이 아니라 조정장에서 주식을 사기 위한 완충 자산으로 보고, 신규 매수는 다른 저비중 자산에 우선 배정하세요.`;
+      }
+      if (weight >= ADVICE_POLICY.GLD.target && weight <= band.max) {
+        return "GLD는 목표보다 살짝 높아도 방어 버퍼 구간입니다. SPY/QQQ가 크게 부족하지 않다면 강제 리밸런싱은 필요 없습니다.";
+      }
+      if (weight < band.min) return "GLD가 하단 밴드 아래라 하락장 완충력이 약해질 수 있습니다. 향후 신규 매수금 일부를 GLD에 배정해 20% 근처로 복귀시키세요.";
+      return "GLD는 밴드 안입니다. 완충 자산으로 유지하면서 DCA를 계속하세요.";
+    }
+    if (ticker === "QQQ") {
+      if (weight < band.min) return "QQQ가 성장 엔진 대비 부족합니다. 신규 매수금은 우선 QQQ로 배정하세요.";
+      if (weight > band.max) return "QQQ 성장 집중도가 높습니다. 큰 과열이 아니라면 매도보다 신규 매수금을 SPY/GLD/SCHD로 돌리세요.";
+      return "QQQ는 밴드 안입니다. 장기 성장 엔진으로 DCA를 유지하세요.";
+    }
+    if (ticker === "SPY") {
+      if (weight < band.min) return "SPY가 미국 시장 핵심 비중 대비 부족합니다. QQQ 우선순위를 확인한 뒤 SPY를 보강하세요.";
+      if (weight > band.max) return "SPY가 상단 밴드 위입니다. 즉시 매도보다 신규 매수금을 저비중 자산으로 배정하세요.";
+      return "SPY는 밴드 안입니다. 미국 시장 코어로 유지하세요.";
+    }
+    if (ticker === "SCHD") {
+      if (weight < band.min) return "SCHD는 부족하지만 성장 엔진은 아닙니다. 배당/방어 선호가 크지 않다면 QQQ/SPY 이후 천천히 보강하세요.";
+      if (weight > band.max) return "SCHD가 높아 배당/방어 주식이 성장을 일부 밀어낼 수 있습니다. 신규 매수금은 QQQ/SPY에 우선 배정하세요.";
+      return "SCHD는 밴드 안입니다. 인컴/방어 주식 역할로 유지하세요.";
+    }
+    return "밴드 안에서 DCA를 유지하세요.";
+  }
+
+  function buildAllocationAdviceRows(normalizedAssets, weightsByTicker) {
+    const order = ["SCHD", "GLD", "SPY", "QQQ"];
+    const byTicker = Object.fromEntries(normalizedAssets.map((asset) => [asset.ticker, asset]));
+    return order
+      .filter((ticker) => byTicker[ticker])
+      .map((ticker) => {
+        const asset = byTicker[ticker];
+        const currentWeight = weightsByTicker[ticker] || 0;
+        const policy = ADVICE_POLICY[ticker];
+        return {
+          ticker,
+          currentWeight,
+          targetWeight: policy.target,
+          bandMin: policy.min,
+          bandMax: policy.max,
+          differenceFromTarget: currentWeight - policy.target,
+          bandStatus: getBandStatus(ticker, currentWeight),
+          actionRecommendation: buildTickerActionRecommendation(ticker, currentWeight, weightsByTicker),
+          appTargetWeight: asset.target,
+        };
+      });
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -902,6 +980,9 @@
     const targetRisk = calculateRiskMetrics(buildPortfolioIndexSeries(targetWeights));
     const currentCagr = calculateExpectedCagr(normalizedAssets);
     const targetCagr = calculateTargetExpectedCagr(normalizedAssets);
+    const allocationAdvice = buildAllocationAdviceRows(normalizedAssets, currentWeights);
+    const allWithinBands = allocationAdvice.every((row) => row.bandStatus === "Within Band");
+    const riskDiagnostics = computeInsightRiskDiagnostics();
 
     return {
       generatedFrom: "portfolio-rebalancer-dashboard",
@@ -909,6 +990,19 @@
       contribution: state.contribution,
       planMonths: state.planMonths,
       totalCurrent: total,
+      advicePolicy: {
+        philosophy: [
+          "Long-term US ETF investing",
+          "Prefer DCA over market timing",
+          "SPY/QQQ are growth engines",
+          "GLD is a risk buffer and rebalancing source",
+          "SCHD is income/defensive equity, not the main growth asset",
+          "Use target bands rather than exact rigid percentages",
+        ],
+        targetBands: ADVICE_POLICY,
+        allWithinBands,
+      },
+      allocationAdvice,
       assets: normalizedAssets.map((asset) => ({
         ticker: asset.ticker,
         current: Math.round(asset.current),
@@ -944,6 +1038,17 @@
         buffett: { value: readText("buffettValue"), label: readText("buffettLabel") },
         vix: { value: readText("vixValue"), label: readText("vixLabel") },
       },
+      marketRegime: {
+        availableIndicators: {
+          buffettIndicator: readText("buffettValue") ? { value: readText("buffettValue"), label: readText("buffettLabel") } : null,
+          shillerCape: null,
+          usM2YoyGrowth: null,
+          us10yTreasuryYield: null,
+          us10yRealYield: null,
+        },
+        gldSpyCorrelation: riskDiagnostics.gldSpyCorrelation,
+        betasVsSpy: riskDiagnostics.betasVsSpy,
+      },
       sourceRiskStatus: readText("sourceRiskStatus"),
       monthlyReport: {
         plannedNet: readText("reportPlannedNet"),
@@ -959,11 +1064,46 @@
     const output = document.getElementById("insightOutput");
     const generatedAt = document.getElementById("insightGeneratedAt");
     if (!output) return;
+    const allocationAdvice = Array.isArray(payload?.allocationAdvice) ? payload.allocationAdvice : [];
     const findings = Array.isArray(payload?.findings) ? payload.findings : [];
     const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
     const caveats = Array.isArray(payload?.caveats) ? payload.caveats : [];
     output.innerHTML = `
       <div class="insight-summary">${escapeHtml(payload?.summary || "요약을 생성하지 못했습니다.")}</div>
+      ${
+        allocationAdvice.length > 0
+          ? `<div class="insight-table-wrap">
+              <table class="insight-table">
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Current</th>
+                    <th>Target</th>
+                    <th>Diff</th>
+                    <th>Band</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${allocationAdvice
+                    .map(
+                      (row) => `
+                        <tr>
+                          <th>${escapeHtml(row.ticker)}</th>
+                          <td>${escapeHtml(row.currentAllocation)}</td>
+                          <td>${escapeHtml(row.targetAllocation)}</td>
+                          <td>${escapeHtml(row.differenceFromTarget)}</td>
+                          <td><span class="band-status ${escapeHtml(String(row.bandStatus || "").toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(row.bandStatus)}</span></td>
+                          <td>${escapeHtml(row.actionRecommendation)}</td>
+                        </tr>
+                      `,
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+            </div>`
+          : ""
+      }
       <div class="insight-columns">
         <div>
           <h3>Findings</h3>
@@ -974,6 +1114,7 @@
           <ul>${suggestions.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>제안 없음</li>"}</ul>
         </div>
       </div>
+      ${payload?.plainKoreanSummary ? `<div class="insight-plain-summary">${escapeHtml(payload.plainKoreanSummary)}</div>` : ""}
       ${caveats.length > 0 ? `<div class="insight-caveats">${caveats.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
     `;
     if (generatedAt && payload?.generatedAt) {
@@ -1767,6 +1908,100 @@
     }
     if (varA <= 0 || varB <= 0) return null;
     return cov / Math.sqrt(varA * varB);
+  }
+
+  function betaAgainstBenchmark(assetReturns, benchmarkReturns) {
+    if (!Array.isArray(assetReturns) || !Array.isArray(benchmarkReturns)) return null;
+    const length = Math.min(assetReturns.length, benchmarkReturns.length);
+    if (length < 2) return null;
+    const a = assetReturns.slice(-length);
+    const b = benchmarkReturns.slice(-length);
+    const meanA = a.reduce((sum, v) => sum + v, 0) / length;
+    const meanB = b.reduce((sum, v) => sum + v, 0) / length;
+    let cov = 0;
+    let varB = 0;
+    for (let index = 0; index < length; index += 1) {
+      const da = a[index] - meanA;
+      const db = b[index] - meanB;
+      cov += da * db;
+      varB += db * db;
+    }
+    return varB > 0 ? cov / varB : null;
+  }
+
+  function buildAlignedDailyReturns(historyByTicker, tickers) {
+    if (tickers.some((ticker) => !Array.isArray(historyByTicker[ticker]?.points) || historyByTicker[ticker].points.length < 2)) {
+      return null;
+    }
+    const closeByTicker = {};
+    tickers.forEach((ticker) => {
+      closeByTicker[ticker] = new Map(
+        historyByTicker[ticker].points
+          .filter((point) => Number.isFinite(Number(point.close)))
+          .map((point) => [String(point.date), Number(point.close)]),
+      );
+    });
+    const baseDates = historyByTicker[tickers[0]].points.map((point) => String(point.date));
+    const commonDates = baseDates.filter((date) => tickers.every((ticker) => closeByTicker[ticker].has(date)));
+    if (commonDates.length < 3) return null;
+    const returns = {};
+    tickers.forEach((ticker) => {
+      const closes = commonDates.map((date) => closeByTicker[ticker].get(date));
+      returns[ticker] = [];
+      for (let index = 1; index < closes.length; index += 1) {
+        returns[ticker].push(closes[index] / closes[index - 1] - 1);
+      }
+    });
+    return { dates: commonDates.slice(1), returns };
+  }
+
+  function computeInsightRiskDiagnostics() {
+    const tickers = ["GLD", "SCHD", "SPY", "QQQ"];
+    const aligned = buildAlignedDailyReturns(state.sourceRiskHistory, tickers);
+    if (!aligned) {
+      return {
+        gldSpyCorrelation: { available: false },
+        betasVsSpy: { available: false },
+      };
+    }
+    const gldReturns = aligned.returns.GLD;
+    const spyReturns = aligned.returns.SPY;
+    const windows = [30, 90, 180, 365];
+    const correlations = {};
+    windows.forEach((window) => {
+      const length = Math.min(window, gldReturns.length, spyReturns.length);
+      correlations[`${window}d`] =
+        length >= 2 ? pearsonCorrelation(gldReturns.slice(-length), spyReturns.slice(-length)) : null;
+    });
+    const corr30 = correlations["30d"];
+    const corr180 = correlations["180d"];
+    const expansion = Number.isFinite(corr30) && Number.isFinite(corr180) ? corr30 - corr180 : null;
+    const betaWindow = Math.min(365, spyReturns.length);
+    const betas = {};
+    ["GLD", "QQQ", "SCHD"].forEach((ticker) => {
+      const assetReturns = aligned.returns[ticker] || [];
+      betas[ticker] =
+        betaWindow >= 2 ? betaAgainstBenchmark(assetReturns.slice(-betaWindow), spyReturns.slice(-betaWindow)) : null;
+    });
+    return {
+      gldSpyCorrelation: {
+        available: true,
+        correlations,
+        expansion30dVs180d: expansion,
+        interpretation:
+          Number.isFinite(expansion) && expansion > 0.3
+            ? "Short-term correlation spike"
+            : Number.isFinite(expansion) && expansion > 0.2
+              ? "Recent diversification benefit weakened"
+              : "No major short-term correlation expansion",
+      },
+      betasVsSpy: {
+        available: true,
+        windowDays: betaWindow,
+        values: betas,
+        note: "Correlation shows direction similarity; beta shows sensitivity to SPY moves.",
+      },
+    };
   }
 
   function computePairCorrelations() {
