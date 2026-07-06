@@ -9,59 +9,49 @@ function extractOpenAiText(payload) {
   return parts.join("\n").trim();
 }
 
-const SUPABASE_URL =
-  process.env.AI_ADVICE_SUPABASE_URL ||
-  process.env.TRANSACTION_RECORD_SUPABASE_URL ||
-  "https://gicmktddjxjqzxojkwtf.supabase.co";
-const SUPABASE_KEY =
-  process.env.AI_ADVICE_SUPABASE_KEY ||
-  process.env.TRANSACTION_RECORD_SUPABASE_KEY ||
-  "sb_publishable_uvd-5R9n45gwlSiGdUfCSg_3ruaOIyf";
-const AI_ADVICE_CACHE_TABLE = process.env.AI_ADVICE_CACHE_TABLE || "portfolio_ai_advice_cache";
+const REDIS_REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || null;
+const REDIS_REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || null;
+const AI_ADVICE_CACHE_PREFIX = process.env.AI_ADVICE_CACHE_PREFIX || "portfolio:ai-advice:";
 
 function isValidCacheKey(cacheKey) {
   return typeof cacheKey === "string" && /^band-advice-[a-z0-9]+$/i.test(cacheKey);
 }
 
 async function fetchCachedAdvice(cacheKey) {
-  if (!SUPABASE_URL || !SUPABASE_KEY || !isValidCacheKey(cacheKey)) return null;
-  const url = new URL(`${SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
-  url.searchParams.set("select", "cache_key,text,generated_at");
-  url.searchParams.set("cache_key", `eq.${cacheKey}`);
-  url.searchParams.set("limit", "1");
-
-  const supaResponse = await fetch(url, {
-    headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}` },
+  if (!REDIS_REST_URL || !REDIS_REST_TOKEN || !isValidCacheKey(cacheKey)) return null;
+  const response = await fetch(REDIS_REST_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${REDIS_REST_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(["GET", `${AI_ADVICE_CACHE_PREFIX}${cacheKey}`]),
   });
-  if (!supaResponse.ok) return null;
-  const rows = await supaResponse.json().catch(() => []);
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row || typeof row.text !== "string") return null;
-  return {
-    text: row.text,
-    generatedAt: row.generated_at,
-  };
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (typeof payload?.result !== "string") return null;
+  const cached = JSON.parse(payload.result);
+  if (cached?.cacheKey !== cacheKey || typeof cached?.text !== "string") return null;
+  return cached;
 }
 
 async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
-  if (!SUPABASE_URL || !SUPABASE_KEY || !isValidCacheKey(cacheKey) || typeof text !== "string") return false;
-  const url = new URL(`${SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
-  const supaResponse = await fetch(url, {
+  if (!REDIS_REST_URL || !REDIS_REST_TOKEN || !isValidCacheKey(cacheKey) || typeof text !== "string") return false;
+  const value = JSON.stringify({
+    cacheKey,
+    text,
+    generatedAt,
+    payload,
+  });
+  const response = await fetch(REDIS_REST_URL, {
     method: "POST",
     headers: {
-      apikey: SUPABASE_KEY,
-      authorization: `Bearer ${SUPABASE_KEY}`,
+      authorization: `Bearer ${REDIS_REST_TOKEN}`,
       "content-type": "application/json",
-      prefer: "resolution=merge-duplicates,return=minimal",
     },
-    body: JSON.stringify({
-      cache_key: cacheKey,
-      payload,
-      text,
-      generated_at: generatedAt,
-    }),
+    body: JSON.stringify(["SET", `${AI_ADVICE_CACHE_PREFIX}${cacheKey}`, value]),
   });
-  return supaResponse.ok;
+  return response.ok;
 }
 
 function buildAdviceInterpretationInput(payload) {
@@ -137,7 +127,7 @@ module.exports = async function handler(request, response) {
     response.status(200).send(
       JSON.stringify(
         cached
-          ? { found: true, cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }
+          ? { found: true, cached: true, source: "vercel-kv", text: cached.text, generatedAt: cached.generatedAt }
           : { found: false },
       ),
     );
@@ -155,7 +145,7 @@ module.exports = async function handler(request, response) {
     const cached = await fetchCachedAdvice(cacheKey);
     if (cached) {
       response.status(200).send(
-        JSON.stringify({ cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }),
+        JSON.stringify({ cached: true, source: "vercel-kv", text: cached.text, generatedAt: cached.generatedAt }),
       );
       return;
     }
@@ -163,7 +153,7 @@ module.exports = async function handler(request, response) {
     const text = await generateAdviceInterpretation(payload);
     const generatedAt = new Date().toISOString();
     const saved = await saveCachedAdvice(cacheKey, payload, text, generatedAt);
-    response.status(200).send(JSON.stringify({ text, generatedAt, cached: false, source: saved ? "openai+supabase" : "openai" }));
+    response.status(200).send(JSON.stringify({ text, generatedAt, cached: false, source: saved ? "openai+vercel-kv" : "openai" }));
   } catch (error) {
     response.status(error.status || 500).send(JSON.stringify({ error: error.message || "AI interpretation failed" }));
   }

@@ -1205,14 +1205,14 @@
         status: "ready",
         text: payload.text,
         generatedAt: payload.generatedAt,
-        source: payload.source || "supabase",
+        source: payload.source || "vercel-kv",
       };
       state.aiAdvice = advice;
       saveAiAdviceLocally(advice);
       if (status) {
         status.textContent = advice.generatedAt
-          ? `${new Date(advice.generatedAt).toLocaleString("ko-KR")} · Supabase 저장값`
-          : "Supabase 저장값";
+          ? `${new Date(advice.generatedAt).toLocaleString("ko-KR")} · Vercel 저장값`
+          : "Vercel 저장값";
       }
       renderBandAdvice(normalizedAssets);
     } catch {
@@ -1310,7 +1310,7 @@
       };
       saveAiAdviceLocally(state.aiAdvice);
       if (status) {
-        const savedLabel = payload?.cached ? "Supabase 저장값" : "생성 후 저장됨";
+        const savedLabel = payload?.cached ? "Vercel 저장값" : "생성 후 저장됨";
         status.textContent = payload?.generatedAt
           ? `${new Date(payload.generatedAt).toLocaleString("ko-KR")} · ${savedLabel}`
           : `AI 해석 완료 · ${savedLabel}`;
