@@ -164,6 +164,66 @@ function extractOpenAiText(payload) {
   return parts.join("\n").trim();
 }
 
+const AI_ADVICE_SUPABASE_URL =
+  process.env.AI_ADVICE_SUPABASE_URL ||
+  process.env.TRANSACTION_RECORD_SUPABASE_URL ||
+  "https://gicmktddjxjqzxojkwtf.supabase.co";
+const AI_ADVICE_SUPABASE_KEY =
+  process.env.AI_ADVICE_SUPABASE_KEY ||
+  process.env.TRANSACTION_RECORD_SUPABASE_KEY ||
+  "sb_publishable_uvd-5R9n45gwlSiGdUfCSg_3ruaOIyf";
+const AI_ADVICE_CACHE_TABLE = process.env.AI_ADVICE_CACHE_TABLE || "portfolio_ai_advice_cache";
+
+function isValidAdviceCacheKey(cacheKey) {
+  return typeof cacheKey === "string" && /^band-advice-[a-z0-9]+$/i.test(cacheKey);
+}
+
+async function fetchCachedAdvice(cacheKey) {
+  if (!AI_ADVICE_SUPABASE_URL || !AI_ADVICE_SUPABASE_KEY || !isValidAdviceCacheKey(cacheKey)) return null;
+  const url = new URL(`${AI_ADVICE_SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
+  url.searchParams.set("select", "cache_key,text,generated_at");
+  url.searchParams.set("cache_key", `eq.${cacheKey}`);
+  url.searchParams.set("limit", "1");
+
+  const supaResponse = await fetch(url, {
+    headers: {
+      apikey: AI_ADVICE_SUPABASE_KEY,
+      authorization: `Bearer ${AI_ADVICE_SUPABASE_KEY}`,
+    },
+  });
+  if (!supaResponse.ok) return null;
+  const rows = await supaResponse.json().catch(() => []);
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || typeof row.text !== "string") return null;
+  return {
+    text: row.text,
+    generatedAt: row.generated_at,
+  };
+}
+
+async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
+  if (!AI_ADVICE_SUPABASE_URL || !AI_ADVICE_SUPABASE_KEY || !isValidAdviceCacheKey(cacheKey) || typeof text !== "string") {
+    return false;
+  }
+  const url = new URL(`${AI_ADVICE_SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
+  const supaResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: AI_ADVICE_SUPABASE_KEY,
+      authorization: `Bearer ${AI_ADVICE_SUPABASE_KEY}`,
+      "content-type": "application/json",
+      prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      cache_key: cacheKey,
+      payload,
+      text,
+      generated_at: generatedAt,
+    }),
+  });
+  return supaResponse.ok;
+}
+
 function buildAdviceInterpretationInput(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   return [
@@ -1032,17 +1092,45 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (requestUrl.pathname === "/api/insights") {
+    if (request.method === "GET") {
+      const cacheKey = requestUrl.searchParams.get("cacheKey");
+      const cached = await fetchCachedAdvice(cacheKey);
+      send(
+        response,
+        200,
+        JSON.stringify(
+          cached
+            ? { found: true, cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }
+            : { found: false },
+        ),
+        "application/json; charset=utf-8",
+      );
+      return;
+    }
+
     if (request.method !== "POST") {
       send(response, 405, JSON.stringify({ error: "Method not allowed" }), "application/json; charset=utf-8");
       return;
     }
     try {
       const payload = await readJsonBody(request);
+      const cached = await fetchCachedAdvice(payload.cacheKey);
+      if (cached) {
+        send(
+          response,
+          200,
+          JSON.stringify({ cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }),
+          "application/json; charset=utf-8",
+        );
+        return;
+      }
       const text = await generateAdviceInterpretation(payload);
+      const generatedAt = new Date().toISOString();
+      const saved = await saveCachedAdvice(payload.cacheKey, payload, text, generatedAt);
       send(
         response,
         200,
-        JSON.stringify({ text, generatedAt: new Date().toISOString() }),
+        JSON.stringify({ text, generatedAt, cached: false, source: saved ? "openai+supabase" : "openai" }),
         "application/json; charset=utf-8",
       );
     } catch (error) {

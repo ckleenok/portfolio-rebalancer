@@ -41,6 +41,7 @@
     manualTrades: {},
     sourceSnapshots: [],
     aiAdvice: null,
+    aiAdviceSuppressedKey: null,
   };
 
   const ASSET_COLORS = {
@@ -56,6 +57,7 @@
   const ACTUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-actual-trades-v1";
   const MANUAL_TRADES_STORAGE_KEY = "portfolio-rebalancer-manual-trades-v1";
   const ACTUAL_TRADES_MONTH_KEY = "portfolio-rebalancer-actual-trades-month-v1";
+  const AI_ADVICE_STORAGE_KEY = "portfolio-rebalancer-ai-advice-v1";
   const ACTUAL_TRADE_TICKERS = ["GLD", "SCHD", "SPY", "QQQ"];
   const ADVICE_POLICY = {
     SCHD: { target: 0.1, min: 0.08, max: 0.12 },
@@ -1066,6 +1068,7 @@
     const context = buildAdviceContext(normalizedAssets);
     return {
       generatedFrom: "portfolio-rebalancer-band-advice",
+      cacheKey: buildAiAdviceCacheKey(normalizedAssets, context),
       asOf: new Date().toISOString(),
       contribution: state.contribution,
       planMonths: state.planMonths,
@@ -1095,6 +1098,55 @@
     };
   }
 
+  function hashString(value) {
+    let hash = 5381;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 33) ^ value.charCodeAt(index);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function buildAiAdviceCacheKey(normalizedAssets, context = buildAdviceContext(normalizedAssets)) {
+    const source = {
+      version: 2,
+      contribution: Math.round(state.contribution),
+      planMonths: state.planMonths,
+      assets: normalizedAssets
+        .map((asset) => ({
+          ticker: asset.ticker,
+          current: Math.round(Number(asset.current) || 0),
+          target: Number((Number(asset.target) || 0).toFixed(4)),
+        }))
+        .sort((a, b) => a.ticker.localeCompare(b.ticker)),
+      rows: context.rows.map((row) => ({
+        ticker: row.ticker,
+        currentWeight: Number(row.currentWeight.toFixed(4)),
+        targetWeight: Number(row.targetWeight.toFixed(4)),
+        bandStatus: row.bandStatus,
+      })),
+      marketNotes: context.marketNotes,
+    };
+    return `band-advice-${hashString(JSON.stringify(source))}`;
+  }
+
+  function saveAiAdviceLocally(advice) {
+    try {
+      localStorage.setItem(AI_ADVICE_STORAGE_KEY, JSON.stringify(advice));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function readLocalAiAdvice(cacheKey) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(AI_ADVICE_STORAGE_KEY) || "null");
+      if (parsed?.cacheKey !== cacheKey || typeof parsed?.text !== "string") return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
   function renderAiAdviceBlock() {
     if (!state.aiAdvice) return "";
     if (state.aiAdvice.status === "loading") {
@@ -1113,8 +1165,60 @@
 
   function clearAiAdvice() {
     state.aiAdvice = null;
+    state.aiAdviceSuppressedKey = null;
     const status = document.getElementById("aiAdviceStatus");
     if (status) status.textContent = "룰 계산 결과를 AI가 해석합니다";
+  }
+
+  async function loadCachedAiAdvice() {
+    const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const cacheKey = buildAiAdviceCacheKey(normalizedAssets);
+    if (state.aiAdvice?.status === "ready" && state.aiAdvice.cacheKey === cacheKey) return;
+    if (state.aiAdvice?.status === "loading" || state.aiAdviceSuppressedKey === cacheKey) return;
+
+    const localAdvice = readLocalAiAdvice(cacheKey);
+    if (localAdvice) {
+      state.aiAdvice = { status: "ready", ...localAdvice };
+      const status = document.getElementById("aiAdviceStatus");
+      if (status) {
+        status.textContent = localAdvice.generatedAt
+          ? `${new Date(localAdvice.generatedAt).toLocaleString("ko-KR")} · 저장됨`
+          : "저장된 AI 해석";
+      }
+      renderBandAdvice(normalizedAssets);
+      return;
+    }
+
+    if (!AI_ADVICE_URL) return;
+    const status = document.getElementById("aiAdviceStatus");
+    if (status) status.textContent = "저장된 AI 해석 확인 중...";
+    try {
+      const response = await fetch(`${AI_ADVICE_URL}?cacheKey=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.found || typeof payload?.text !== "string") {
+        state.aiAdviceSuppressedKey = cacheKey;
+        if (status) status.textContent = "룰 계산 결과를 AI가 해석합니다";
+        return;
+      }
+      const advice = {
+        cacheKey,
+        status: "ready",
+        text: payload.text,
+        generatedAt: payload.generatedAt,
+        source: payload.source || "supabase",
+      };
+      state.aiAdvice = advice;
+      saveAiAdviceLocally(advice);
+      if (status) {
+        status.textContent = advice.generatedAt
+          ? `${new Date(advice.generatedAt).toLocaleString("ko-KR")} · Supabase 저장값`
+          : "Supabase 저장값";
+      }
+      renderBandAdvice(normalizedAssets);
+    } catch {
+      state.aiAdviceSuppressedKey = cacheKey;
+      if (status) status.textContent = "룰 계산 결과를 AI가 해석합니다";
+    }
   }
 
   function renderBandAdvice(normalizedAssets) {
@@ -1183,7 +1287,9 @@
     const status = document.getElementById("aiAdviceStatus");
     if (!AI_ADVICE_URL || !button) return;
     const normalizedAssets = normalizeAssetsByTarget(state.assets);
+    const cacheKey = buildAiAdviceCacheKey(normalizedAssets);
     state.aiAdvice = { status: "loading" };
+    state.aiAdviceSuppressedKey = null;
     if (status) status.textContent = "AI 해석 생성 중...";
     button.disabled = true;
     renderBandAdvice(normalizedAssets);
@@ -1197,9 +1303,18 @@
       if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
       state.aiAdvice = {
         status: "ready",
+        cacheKey,
         text: payload?.text || "AI 해석을 받았지만 표시할 문장이 없습니다.",
+        generatedAt: payload?.generatedAt,
+        source: payload?.source || (payload?.cached ? "supabase" : "openai"),
       };
-      if (status) status.textContent = payload?.generatedAt ? new Date(payload.generatedAt).toLocaleString("ko-KR") : "AI 해석 완료";
+      saveAiAdviceLocally(state.aiAdvice);
+      if (status) {
+        const savedLabel = payload?.cached ? "Supabase 저장값" : "생성 후 저장됨";
+        status.textContent = payload?.generatedAt
+          ? `${new Date(payload.generatedAt).toLocaleString("ko-KR")} · ${savedLabel}`
+          : `AI 해석 완료 · ${savedLabel}`;
+      }
     } catch (error) {
       const message = /OPENAI_API_KEY|configured|quota|billing/i.test(error.message)
         ? "OpenAI API 키/결제/쿼터 설정을 확인해 주세요. 룰 기반 조언은 계속 사용할 수 있습니다."
@@ -1470,6 +1585,7 @@
     renderInputs();
     bindAssetInputs();
     render();
+    loadCachedAiAdvice();
     document.getElementById("sheetStatus").textContent = `${sourceLabel}: ${row.date}`;
     return true;
   }
@@ -2608,6 +2724,7 @@
     renderInputs();
     bindAssetInputs();
     render();
+    loadCachedAiAdvice();
 
     document.getElementById("contributionInput").addEventListener("input", (event) => updateContribution(event.target.value));
     document.getElementById("planMonthsInput").addEventListener("input", (event) => updatePlanMonths(event.target.value));

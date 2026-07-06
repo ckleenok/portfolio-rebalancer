@@ -9,6 +9,61 @@ function extractOpenAiText(payload) {
   return parts.join("\n").trim();
 }
 
+const SUPABASE_URL =
+  process.env.AI_ADVICE_SUPABASE_URL ||
+  process.env.TRANSACTION_RECORD_SUPABASE_URL ||
+  "https://gicmktddjxjqzxojkwtf.supabase.co";
+const SUPABASE_KEY =
+  process.env.AI_ADVICE_SUPABASE_KEY ||
+  process.env.TRANSACTION_RECORD_SUPABASE_KEY ||
+  "sb_publishable_uvd-5R9n45gwlSiGdUfCSg_3ruaOIyf";
+const AI_ADVICE_CACHE_TABLE = process.env.AI_ADVICE_CACHE_TABLE || "portfolio_ai_advice_cache";
+
+function isValidCacheKey(cacheKey) {
+  return typeof cacheKey === "string" && /^band-advice-[a-z0-9]+$/i.test(cacheKey);
+}
+
+async function fetchCachedAdvice(cacheKey) {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !isValidCacheKey(cacheKey)) return null;
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
+  url.searchParams.set("select", "cache_key,text,generated_at");
+  url.searchParams.set("cache_key", `eq.${cacheKey}`);
+  url.searchParams.set("limit", "1");
+
+  const supaResponse = await fetch(url, {
+    headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!supaResponse.ok) return null;
+  const rows = await supaResponse.json().catch(() => []);
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || typeof row.text !== "string") return null;
+  return {
+    text: row.text,
+    generatedAt: row.generated_at,
+  };
+}
+
+async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !isValidCacheKey(cacheKey) || typeof text !== "string") return false;
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${AI_ADVICE_CACHE_TABLE}`);
+  const supaResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      authorization: `Bearer ${SUPABASE_KEY}`,
+      "content-type": "application/json",
+      prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      cache_key: cacheKey,
+      payload,
+      text,
+      generated_at: generatedAt,
+    }),
+  });
+  return supaResponse.ok;
+}
+
 function buildAdviceInterpretationInput(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   return [
@@ -75,14 +130,40 @@ module.exports = async function handler(request, response) {
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
 
+  if (request.method === "GET") {
+    const requestUrl = new URL(request.url || "/", "http://localhost");
+    const cacheKey = requestUrl.searchParams.get("cacheKey");
+    const cached = await fetchCachedAdvice(cacheKey);
+    response.status(200).send(
+      JSON.stringify(
+        cached
+          ? { found: true, cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }
+          : { found: false },
+      ),
+    );
+    return;
+  }
+
   if (request.method !== "POST") {
     response.status(405).send(JSON.stringify({ error: "Method not allowed" }));
     return;
   }
 
   try {
-    const text = await generateAdviceInterpretation(request.body || {});
-    response.status(200).send(JSON.stringify({ text, generatedAt: new Date().toISOString() }));
+    const payload = request.body || {};
+    const cacheKey = payload.cacheKey;
+    const cached = await fetchCachedAdvice(cacheKey);
+    if (cached) {
+      response.status(200).send(
+        JSON.stringify({ cached: true, source: "supabase", text: cached.text, generatedAt: cached.generatedAt }),
+      );
+      return;
+    }
+
+    const text = await generateAdviceInterpretation(payload);
+    const generatedAt = new Date().toISOString();
+    const saved = await saveCachedAdvice(cacheKey, payload, text, generatedAt);
+    response.status(200).send(JSON.stringify({ text, generatedAt, cached: false, source: saved ? "openai+supabase" : "openai" }));
   } catch (error) {
     response.status(error.status || 500).send(JSON.stringify({ error: error.message || "AI interpretation failed" }));
   }
