@@ -1139,7 +1139,8 @@ const server = http.createServer(async (request, response) => {
     }
     try {
       const payload = await readJsonBody(request);
-      const cached = await fetchCachedAdvice(payload.cacheKey);
+      const force = payload.force === true;
+      const cached = force ? null : await fetchCachedAdvice(payload.cacheKey);
       if (cached) {
         await saveLatestAdvice(cached).catch(() => false);
         send(

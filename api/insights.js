@@ -180,7 +180,8 @@ module.exports = async function handler(request, response) {
   try {
     const payload = request.body || {};
     const cacheKey = payload.cacheKey;
-    const cached = await fetchCachedAdvice(cacheKey);
+    const force = payload.force === true;
+    const cached = force ? null : await fetchCachedAdvice(cacheKey);
     if (cached) {
       await saveLatestAdvice(cached).catch(() => false);
       response.status(200).send(

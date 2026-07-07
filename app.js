@@ -1223,6 +1223,12 @@
     }
   }
 
+  async function loadLatestAiAdvice() {
+    state.aiAdvice = null;
+    state.aiAdviceSuppressedKey = null;
+    await loadCachedAiAdvice();
+  }
+
   function renderBandAdvice(normalizedAssets) {
     const output = document.getElementById("adviceOutput");
     const status = document.getElementById("adviceStatus");
@@ -1299,7 +1305,7 @@
       const response = await fetch(AI_ADVICE_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(buildAiAdvicePayload(normalizedAssets)),
+        body: JSON.stringify({ ...buildAiAdvicePayload(normalizedAssets), force: true }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
@@ -2766,6 +2772,10 @@
     const generateAiAdviceButton = document.getElementById("generateAiAdviceButton");
     if (generateAiAdviceButton) {
       generateAiAdviceButton.addEventListener("click", generateAiAdvice);
+    }
+    const loadAiAdviceButton = document.getElementById("loadAiAdviceButton");
+    if (loadAiAdviceButton) {
+      loadAiAdviceButton.addEventListener("click", loadLatestAiAdvice);
     }
     loadSavedCalendarVisibility();
     loadSavedInstitutionalVisibility();

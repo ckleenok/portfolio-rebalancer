@@ -235,6 +235,7 @@ body.institutional-hidden .institutional-rail {
 
 .advice-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-top: 10px;
