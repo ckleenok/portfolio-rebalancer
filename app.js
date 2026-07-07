@@ -1276,10 +1276,10 @@
             <li>SCHD는 인컴/방어 주식이며 주요 성장 자산은 아닙니다.</li>
           </ul>
         </div>
-        <div>
-          <h3>시장 오버레이</h3>
-          <ul>${marketNotes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-        </div>
+      </div>
+      <div class="advice-market-overlay">
+        <h3>시장 오버레이</h3>
+        <ul>${marketNotes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </div>
     `;
   }
