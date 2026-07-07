@@ -1139,7 +1139,8 @@
   function readLocalAiAdvice(cacheKey) {
     try {
       const parsed = JSON.parse(localStorage.getItem(AI_ADVICE_STORAGE_KEY) || "null");
-      if (parsed?.cacheKey !== cacheKey || typeof parsed?.text !== "string") return null;
+      if (typeof parsed?.text !== "string") return null;
+      if (parsed?.cacheKey !== cacheKey && !parsed?.latest) return null;
       return parsed;
     } catch {
       return null;
@@ -1208,7 +1209,7 @@
         exact: payload.exact !== false,
       };
       state.aiAdvice = advice;
-      if (advice.exact) saveAiAdviceLocally(advice);
+      saveAiAdviceLocally(advice.exact ? advice : { ...advice, latest: true });
       if (status) {
         const savedLabel = advice.exact ? "Vercel 저장값" : "Vercel 최근 생성값";
         status.textContent = advice.generatedAt
@@ -1307,11 +1308,12 @@
         cacheKey,
         text: payload?.text || "AI 해석을 받았지만 표시할 문장이 없습니다.",
         generatedAt: payload?.generatedAt,
-        source: payload?.source || (payload?.cached ? "supabase" : "openai"),
+        source: payload?.source || (payload?.cached ? "vercel-kv" : "openai"),
       };
       saveAiAdviceLocally(state.aiAdvice);
       if (status) {
-        const savedLabel = payload?.cached ? "Vercel 저장값" : "생성 후 저장됨";
+        const savedInVercel = String(payload?.source || "").includes("vercel-kv");
+        const savedLabel = payload?.cached ? "Vercel 저장값" : savedInVercel ? "생성 후 Vercel 저장됨" : "생성됨 · Vercel 저장 실패";
         status.textContent = payload?.generatedAt
           ? `${new Date(payload.generatedAt).toLocaleString("ko-KR")} · ${savedLabel}`
           : `AI 해석 완료 · ${savedLabel}`;

@@ -47,14 +47,28 @@ async function fetchLatestAdvice() {
   return fetchCachedAdvice(null);
 }
 
+async function saveLatestAdvice(advice) {
+  if (!REDIS_REST_URL || !REDIS_REST_TOKEN || typeof advice?.text !== "string") return false;
+  const response = await fetch(REDIS_REST_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${REDIS_REST_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(["SET", AI_ADVICE_LATEST_KEY, JSON.stringify(advice)]),
+  });
+  return response.ok;
+}
+
 async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
   if (!REDIS_REST_URL || !REDIS_REST_TOKEN || !isValidCacheKey(cacheKey) || typeof text !== "string") return false;
-  const value = JSON.stringify({
+  const advice = {
     cacheKey,
     text,
     generatedAt,
     payload,
-  });
+  };
+  const value = JSON.stringify(advice);
   const key = `${AI_ADVICE_CACHE_PREFIX}${cacheKey}`;
   const response = await fetch(REDIS_REST_URL, {
     method: "POST",
@@ -65,14 +79,7 @@ async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
     body: JSON.stringify(["SET", key, value]),
   });
   if (!response.ok) return false;
-  await fetch(REDIS_REST_URL, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${REDIS_REST_TOKEN}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(["SET", AI_ADVICE_LATEST_KEY, value]),
-  }).catch(() => null);
+  await saveLatestAdvice(advice).catch(() => false);
   return true;
 }
 
@@ -175,6 +182,7 @@ module.exports = async function handler(request, response) {
     const cacheKey = payload.cacheKey;
     const cached = await fetchCachedAdvice(cacheKey);
     if (cached) {
+      await saveLatestAdvice(cached).catch(() => false);
       response.status(200).send(
         JSON.stringify({ cached: true, source: "vercel-kv", text: cached.text, generatedAt: cached.generatedAt }),
       );

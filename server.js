@@ -202,16 +202,30 @@ async function fetchLatestAdvice() {
   return fetchCachedAdvice(null);
 }
 
+async function saveLatestAdvice(advice) {
+  if (!AI_ADVICE_REDIS_REST_URL || !AI_ADVICE_REDIS_REST_TOKEN || typeof advice?.text !== "string") return false;
+  const response = await fetch(AI_ADVICE_REDIS_REST_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${AI_ADVICE_REDIS_REST_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(["SET", AI_ADVICE_LATEST_KEY, JSON.stringify(advice)]),
+  });
+  return response.ok;
+}
+
 async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
   if (!AI_ADVICE_REDIS_REST_URL || !AI_ADVICE_REDIS_REST_TOKEN || !isValidAdviceCacheKey(cacheKey) || typeof text !== "string") {
     return false;
   }
-  const value = JSON.stringify({
+  const advice = {
     cacheKey,
     text,
     generatedAt,
     payload,
-  });
+  };
+  const value = JSON.stringify(advice);
   const key = `${AI_ADVICE_CACHE_PREFIX}${cacheKey}`;
   const response = await fetch(AI_ADVICE_REDIS_REST_URL, {
     method: "POST",
@@ -222,14 +236,7 @@ async function saveCachedAdvice(cacheKey, payload, text, generatedAt) {
     body: JSON.stringify(["SET", key, value]),
   });
   if (!response.ok) return false;
-  await fetch(AI_ADVICE_REDIS_REST_URL, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${AI_ADVICE_REDIS_REST_TOKEN}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(["SET", AI_ADVICE_LATEST_KEY, value]),
-  }).catch(() => null);
+  await saveLatestAdvice(advice).catch(() => false);
   return true;
 }
 
@@ -1134,6 +1141,7 @@ const server = http.createServer(async (request, response) => {
       const payload = await readJsonBody(request);
       const cached = await fetchCachedAdvice(payload.cacheKey);
       if (cached) {
+        await saveLatestAdvice(cached).catch(() => false);
         send(
           response,
           200,
