@@ -2064,7 +2064,7 @@
     );
   }
 
-  function renderSourceRiskChart(title, points, field, formatter, color) {
+  function renderSourceRiskChart(title, points, field, formatter, color, note) {
     if (!Array.isArray(points) || points.length < 2) {
       return `
         <div class="source-risk-card">
@@ -2092,16 +2092,23 @@
     const first = series[0].close;
     const delta = latest - first;
     const deltaLabel = field === "mdd" || field === "cagr" ? formatSignedPoint(delta) : formatSignedNumber(delta);
+    const deltaClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
     return `
       <div class="source-risk-card">
         <div class="source-risk-head">
           <strong>${title}</strong>
-          <span>${formatter(latest)} / ${deltaLabel}</span>
+          <span>최신 ${formatter(latest)}</span>
+        </div>
+        <div class="source-risk-readout">
+          <span>시작 <b>${formatter(first)}</b></span>
+          <span>최신 <b>${formatter(latest)}</b></span>
+          <span>시작 대비 <b class="${deltaClass}">${deltaLabel}</b></span>
         </div>
         <svg class="source-risk-svg" viewBox="0 0 280 64" preserveAspectRatio="none">
           <line x1="5" y1="${model.coords[0].y.toFixed(1)}" x2="275" y2="${model.coords[0].y.toFixed(1)}" stroke="#c6cfdb" stroke-width="1" stroke-dasharray="4 3"></line>
           <path d="${pathData}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"></path>
         </svg>
+        <div class="source-risk-meta">${note}</div>
         <div class="source-risk-axis">
           <span>${series[0].date}</span>
           <span>${series[series.length - 1].date}</span>
@@ -2130,8 +2137,22 @@
     const points = buildSourceRiskTrendPoints();
     if (status) status.textContent = `원본 날짜별 포트폴리오 MDD/CAGR 기준 (현금 제외) / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
     container.innerHTML =
-      renderSourceRiskChart("MDD 변화", points, "mdd", (value) => `${value.toFixed(1)}%`, "#b94a48") +
-      renderSourceRiskChart("CAGR 변화", points, "cagr", (value) => `${value.toFixed(1)}%`, "#147c72");
+      renderSourceRiskChart(
+        "MDD 실제값",
+        points,
+        "mdd",
+        (value) => `${value.toFixed(1)}%`,
+        "#b94a48",
+        "최대낙폭입니다. 0%에 가까울수록 낙폭이 작습니다.",
+      ) +
+      renderSourceRiskChart(
+        "CAGR 실제값",
+        points,
+        "cagr",
+        (value) => `${value.toFixed(1)}%`,
+        "#147c72",
+        "연환산 수익률입니다. 변화는 시작 비중 대비 차이입니다.",
+      );
   }
 
   function applyCalendarVisibility(visible) {

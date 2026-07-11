@@ -1338,10 +1338,46 @@ input:focus {
   font-size: 12px;
 }
 
+.source-risk-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.source-risk-readout span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px;
+}
+
+.source-risk-readout b {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.source-risk-readout b.positive {
+  color: var(--accent);
+}
+
+.source-risk-readout b.negative {
+  color: #b94a48;
+}
+
+.source-risk-readout b.neutral {
+  color: var(--muted);
+}
+
 .source-risk-svg {
   display: block;
   width: 100%;
   height: 64px;
+  margin-top: 4px;
 }
 
 .source-risk-axis {
