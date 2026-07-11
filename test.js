@@ -58,7 +58,8 @@ assert.deepStrictEqual(
     QQQ: latest.QQQ,
     SCHD: latest.SCHD,
     GLD: latest.GLD,
-    recentCurrentTotals: latest.recentCurrentTotals,
+    currentEvaluationTotal: latest.currentEvaluationTotal,
+    latestRecentTotal: latest.recentCurrentTotals.at(-1),
   },
   {
   date: "26.4.16",
@@ -66,7 +67,8 @@ assert.deepStrictEqual(
   QQQ: 6431,
   SCHD: 3289,
   GLD: 7730,
-  recentCurrentTotals: [23368],
+  currentEvaluationTotal: 24788,
+  latestRecentTotal: 24788,
   },
 );
 assert.ok(Array.isArray(latest.sourceSnapshots));

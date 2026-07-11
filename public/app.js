@@ -26,6 +26,7 @@
     contribution: 400,
     planMonths: 6,
     trendWindow: 30,
+    currentEvaluationTotal: 0,
     recentCurrentTotals: [],
     assets: TARGETS.map((asset) => ({ ...asset })),
     draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
@@ -403,7 +404,8 @@
         QQQ: latestSource.QQQ,
         SCHD: latestSource.SCHD,
         GLD: latestSource.GLD,
-        recentCurrentTotals: sourceSnapshots.map((snapshot) => snapshot.invested).slice(-6),
+        currentEvaluationTotal: latestSource.total,
+        recentCurrentTotals: sourceSnapshots.map((snapshot) => snapshot.total).slice(-6),
         sourceSnapshots,
       };
     }
@@ -546,9 +548,10 @@
     const history = document.getElementById("currentHistory");
     if (!metric || !history) return;
 
+    const displayTotal = state.currentEvaluationTotal > 0 ? state.currentEvaluationTotal : totalFromAssets;
     const values =
-      state.recentCurrentTotals.length > 0 ? state.recentCurrentTotals.slice(-6) : [Math.max(0, totalFromAssets)];
-    metric.textContent = formatMoney(totalFromAssets);
+      state.recentCurrentTotals.length > 0 ? state.recentCurrentTotals.slice(-6) : [Math.max(0, displayTotal)];
+    metric.textContent = formatMoney(displayTotal);
     const maxValue = Math.max(...values, 1);
     history.innerHTML = "";
     history.setAttribute("aria-label", "현재 평가금 최근 6개 값");
@@ -1601,6 +1604,7 @@
     if (!row) return false;
     clearAiAdvice();
     state.assets = state.assets.map((asset) => ({ ...asset, current: row[asset.ticker] ?? asset.current }));
+    state.currentEvaluationTotal = Number(row.currentEvaluationTotal) > 0 ? Number(row.currentEvaluationTotal) : 0;
     state.recentCurrentTotals = Array.isArray(row.recentCurrentTotals) ? row.recentCurrentTotals.slice(-6) : [];
     state.sourceSnapshots = Array.isArray(row.sourceSnapshots) ? row.sourceSnapshots : [];
     renderInputs();
