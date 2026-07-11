@@ -2135,15 +2135,15 @@
       const sourceFailures = Array.isArray(state.sourceRiskFailures) ? state.sourceRiskFailures : [];
       if (sourceFailures.length > 0 && !state.sourceRiskLoading) {
         container.innerHTML = `<div class="source-risk-empty">가격 히스토리 일부를 불러오지 못했습니다: ${escapeHtml(sourceFailures.join(", "))}</div>`;
-        if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 실패";
+        if (status) status.textContent = "원본 비중 MDD/백테스트 CAGR 계산 실패";
       } else {
         container.innerHTML = `<div class="source-risk-empty">가격 히스토리 불러오는 중...</div>`;
-        if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 대기";
+        if (status) status.textContent = "원본 비중 MDD/백테스트 CAGR 계산 대기";
       }
       return;
     }
     const points = buildSourceRiskTrendPoints();
-    if (status) status.textContent = `원본 날짜별 포트폴리오 MDD/CAGR 기준 (현금 제외) / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
+    if (status) status.textContent = `원본 날짜별 포트폴리오 비중 백테스트 기준 (현금 제외) / 최신 ${latest.dateLabel || formatShortDate(latest.date)}`;
     container.innerHTML =
       renderSourceRiskChart(
         "MDD 실제값",
@@ -2154,7 +2154,7 @@
         "최대낙폭입니다. 0%에 가까울수록 낙폭이 작습니다.",
       ) +
       renderSourceRiskChart(
-        "CAGR 실제값",
+        "백테스트 CAGR",
         points,
         "cagr",
         (value) => `${value.toFixed(1)}%`,
