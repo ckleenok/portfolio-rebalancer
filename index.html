@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=20260427-05" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-ai-interpretation-13" />
   </head>
   <body>
     <main class="app-shell">
@@ -20,20 +20,38 @@
         </aside>
         <div class="app-main">
       <section class="topbar">
-        <div>
-<h1>Portfolio Manager</h1>
+        <div class="topbar-left">
+          <button id="toggleInstitutionalButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide 13F Panel" aria-label="Hide 13F Panel">
+            13F
+          </button>
+        </div>
+        <div class="topbar-center">
+          <h1>Portfolio Manager</h1>
         </div>
         <div class="topbar-actions">
           <button id="loadSheetButton" class="ghost-button" type="button" title="Google Sheet에서 최신 행 불러오기">
           시트 불러오기
         </button>
-          <button id="toggleInstitutionalButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide 13F Panel" aria-label="Hide 13F Panel">
-            13F
-          </button>
           <button id="toggleCalendarButton" class="ghost-button calendar-toggle-btn" type="button" title="Hide Calendar" aria-label="Hide Calendar">
             ◀
           </button>
         </div>
+      </section>
+
+      <section class="advice-panel" aria-label="Band-based portfolio advice">
+        <div class="panel-title">
+          <h2>밴드 리밸런싱 조언</h2>
+          <span id="adviceStatus">10/20/30/40 목표 밴드 기준</span>
+        </div>
+        <div class="advice-actions">
+          <button id="generateAiAdviceButton" class="primary-button" type="button">AI 해석 생성</button>
+          <button id="loadAiAdviceButton" class="ghost-button" type="button">최근 AI 해석 가져오기</button>
+          <span id="aiAdviceStatus">룰 계산 결과를 AI가 해석합니다</span>
+        </div>
+        <div id="adviceOutput" class="advice-output">
+          <div class="advice-empty">현재 포트폴리오 기준으로 밴드 상태를 계산합니다.</div>
+        </div>
+        <div class="advice-disclaimer">교육용 참고 정보이며, 최종 투자 결정과 책임은 사용자에게 있습니다.</div>
       </section>
 
       <section class="market-pulse" aria-label="시장 지표">
@@ -88,6 +106,18 @@
             <strong id="shortMetric">6개월</strong>
             <input id="planMonthsInput" class="month-slider" type="range" min="1" max="24" step="1" value="6" aria-label="Target months" />
           </div>
+          <div class="target-editor-title">목표 비중 (%)</div>
+          <div class="target-grid">
+            <label class="target-input"><b>GLD</b><input id="target-GLD" type="text" inputmode="decimal" value="20" /></label>
+            <label class="target-input"><b>SCHD</b><input id="target-SCHD" type="text" inputmode="decimal" value="10" /></label>
+            <label class="target-input"><b>SPY</b><input id="target-SPY" type="text" inputmode="decimal" value="30" /></label>
+            <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="40" /></label>
+          </div>
+          <div class="target-actions">
+            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
+            <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
+          </div>
+          <div id="targetSaveStatus" class="target-save-status"></div>
         </div>
         <div class="metric">
           <span>현재 평가금</span>
@@ -106,18 +136,8 @@
           </div>
 </div>
         <div class="metric">
-          <span>목표 비중 (%)</span>
-          <div class="target-grid">
-            <label class="target-input"><b>GLD</b><input id="target-GLD" type="text" inputmode="decimal" value="41" /></label>
-            <label class="target-input"><b>SCHD</b><input id="target-SCHD" type="text" inputmode="decimal" value="7" /></label>
-            <label class="target-input"><b>SPY</b><input id="target-SPY" type="text" inputmode="decimal" value="22" /></label>
-            <label class="target-input"><b>QQQ</b><input id="target-QQQ" type="text" inputmode="decimal" value="30" /></label>
-          </div>
-          <div class="target-actions">
-            <div class="target-total">합계 <strong id="targetTotalDisplay">100.0%</strong></div>
-            <button id="saveTargetsButton" class="ghost-button target-save-button" type="button">Save</button>
-          </div>
-          <div id="targetSaveStatus" class="target-save-status"></div>
+          <span>목표 지표</span>
+          <div id="targetContributionBreakdown" class="target-contribution-breakdown" aria-label="Contribution by ticker"></div>
           <div class="window-toggle" role="group" aria-label="Risk window">
             <button id="window30Button" type="button" class="window-button active">30D</button>
             <button id="window90Button" type="button" class="window-button">90D</button>
@@ -138,37 +158,80 @@
       </section>
 
       <section class="workbench">
-        <div class="panel inputs-panel">
-          <div class="panel-title">
-            <h2>Correlation Coefficient</h2>
+        <div class="workbench-stack">
+          <div class="panel inputs-panel">
+            <div class="panel-title">
+              <h2>Correlation Coefficient</h2>
+            </div>
+            <div class="corr-grid" id="corrGrid" aria-label="Pairwise correlations"></div>
           </div>
-          <div class="corr-grid" id="corrGrid" aria-label="Pairwise correlations"></div>
+
+          <div class="panel trend-panel">
+            <div class="panel-title">
+              <h2>최근 30일 추세</h2>
+              <span id="trendStatus">데이터 불러오는 중...</span>
+            </div>
+            <div id="trendGrid" class="trend-grid"></div>
+          </div>
         </div>
 
-<div class="panel result-panel">
+        <div class="panel result-panel">
           <div class="panel-title">
             <h2>이번 달 거래</h2>
-            <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
+            <div class="trade-panel-actions">
+              <span id="tradeHorizonText">6개월에 걸쳐 점진 조정</span>
+              <button id="saveActualTradesButton" class="ghost-button trade-save-button" type="button">Save</button>
+            </div>
           </div>
+          <div id="actualTradesSaveStatus" class="target-save-status"></div>
           <div id="buyList" class="buy-list"></div>
           <div id="warningBox" class="warning" hidden></div>
         </div>
 
-        <div class="panel trend-panel">
+        <div class="panel monthly-report-panel">
           <div class="panel-title">
-            <h2>최근 30일 추세</h2>
-            <span id="trendStatus">데이터 불러오는 중...</span>
+            <h2>Monthly Rebalancing Report</h2>
+            <span id="monthlyReportDate">이번 달 분석</span>
           </div>
-          <div id="trendGrid" class="trend-grid"></div>
+          <div class="report-grid">
+            <div class="report-card">
+              <span>계획 순투입</span>
+              <strong id="reportPlannedNet">0만원</strong>
+              <em id="reportPlanDetail">매수 0만원 / 축소 0만원</em>
+            </div>
+            <div class="report-card">
+              <span>실제 순투입</span>
+              <strong id="reportActualNet">0만원</strong>
+              <em id="reportActualDetail">매수 0만원 / 축소 0만원</em>
+            </div>
+            <div class="report-card">
+              <span>계획 대비 차이</span>
+              <strong id="reportNetGap">0만원</strong>
+              <em id="reportAdherence">진행률 0.0%</em>
+            </div>
+            <div class="report-card">
+              <span>다음 우선 조정</span>
+              <strong id="reportNextTicker">--</strong>
+              <em id="reportNextDetail">목표 대비 차이 --</em>
+            </div>
+          </div>
+          <div class="report-subsection">
+            <div class="panel-title compact-title">
+              <h3>원본 데이터 리스크 변화</h3>
+              <span id="sourceRiskStatus">시트 원본 스냅샷 기준</span>
+            </div>
+            <div id="sourceRiskCharts" class="source-risk-grid"></div>
+          </div>
+          <div class="report-subsection simulator-panel">
+            <div class="panel-title compact-title">
+              <h3>월별 시뮬레이터</h3>
+              <span id="simulationSummary">계산 중</span>
+            </div>
+            <div id="simulationChart" class="simulation-chart" aria-label="월별 비중 변화 차트"></div>
+            <div id="simulationLegend" class="simulation-legend"></div>
+            <div id="simulationList" class="simulation-list"></div>
+          </div>
         </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-title">
-          <h2>비중 변화</h2>
-          <span id="allocationTargetSummary">목표 GLD 41 / SCHD 7 / SPY 22 / QQQ 30</span>
-        </div>
-        <div id="allocationRows" class="allocation-rows"></div>
       </section>
 
       <section class="panel cagr-panel">
@@ -199,13 +262,6 @@
         </div>
       </section>
 
-      <section class="panel simulator-panel">
-        <div class="panel-title">
-          <h2>월별 시뮬레이터</h2>
-          <span id="simulationSummary">계산 중</span>
-        </div>
-        <div id="simulationList" class="simulation-list"></div>
-      </section>
         </div>
         <aside class="calendar-rail" aria-label="Google Calendar">
           <div class="calendar-card">
@@ -224,6 +280,6 @@
       </div>
     </main>
 
-    <script src="./app.js?v=20260427-05"></script>
+    <script src="./app.js?v=20260706-ai-interpretation-13"></script>
   </body>
 </html>

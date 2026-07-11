@@ -51,14 +51,26 @@ const csv = `Date,SPY,QQQ,SCHD,GLD,Cash/Bond
 26.4.16,"5,918","6,431","3,289","7,730","1,420"
 3.0%,배당,배당성장,,,,,,,,,,,0,0.0%,,26.4.16,"5,918","6,431","3,289","7,730","1,420",23.87%,25.94%,13.26%,31.18%,5.72%`;
 const latest = parseLatestSheetRow(csv);
-assert.deepStrictEqual(latest, {
+assert.deepStrictEqual(
+  {
+    date: latest.date,
+    SPY: latest.SPY,
+    QQQ: latest.QQQ,
+    SCHD: latest.SCHD,
+    GLD: latest.GLD,
+    recentCurrentTotals: latest.recentCurrentTotals,
+  },
+  {
   date: "26.4.16",
   SPY: 5918,
   QQQ: 6431,
   SCHD: 3289,
   GLD: 7730,
   recentCurrentTotals: [23368],
-});
+  },
+);
+assert.ok(Array.isArray(latest.sourceSnapshots));
+assert.ok(latest.sourceSnapshots.length >= 2);
 
 const csvWithCurrentHistory = `,,,,,,,,,,,,,,,,Date,SPY,QQQ,SCHD,GLD,,,,,,
 ,,,,,,,,,,,,,,,,25.12.22,"5,918","5,012","3,698","7,730",,,,,,
