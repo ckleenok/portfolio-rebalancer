@@ -32,6 +32,8 @@
     draftTargets: Object.fromEntries(TARGETS.map((asset) => [asset.ticker, asset.target * 100])),
     trend30: {},
     sourceRiskHistory: {},
+    sourceRiskFailures: [],
+    sourceRiskLoading: false,
     expectedReturns: {
       GLD: 0.04,
       SCHD: 0.07,
@@ -2130,8 +2132,14 @@
 
     const latest = snapshots[snapshots.length - 1];
     if (!hasSourceRiskHistory()) {
-      container.innerHTML = `<div class="source-risk-empty">가격 히스토리 불러오는 중...</div>`;
-      if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 대기";
+      const sourceFailures = Array.isArray(state.sourceRiskFailures) ? state.sourceRiskFailures : [];
+      if (sourceFailures.length > 0 && !state.sourceRiskLoading) {
+        container.innerHTML = `<div class="source-risk-empty">가격 히스토리 일부를 불러오지 못했습니다: ${escapeHtml(sourceFailures.join(", "))}</div>`;
+        if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 실패";
+      } else {
+        container.innerHTML = `<div class="source-risk-empty">가격 히스토리 불러오는 중...</div>`;
+        if (status) status.textContent = "원본 날짜별 포트폴리오 MDD/CAGR 계산 대기";
+      }
       return;
     }
     const points = buildSourceRiskTrendPoints();
@@ -2550,6 +2558,10 @@
     const next = {};
     const sourceRiskNext = {};
     const failures = [];
+    const sourceRiskFailures = [];
+    state.sourceRiskLoading = true;
+    state.sourceRiskFailures = [];
+    renderSourceRiskRows();
 
     for (const asset of state.assets) {
       try {
@@ -2564,17 +2576,22 @@
         if (!response.ok) throw new Error(`${asset.ticker} source HTTP ${response.status}`);
         sourceRiskNext[asset.ticker] = await response.json();
       } catch (error) {
-        failures.push(`${asset.ticker} source: ${error.message}`);
+        const message = `${asset.ticker} source: ${error.message}`;
+        failures.push(message);
+        sourceRiskFailures.push(message);
       }
     }
 
     state.trend30 = { ...state.trend30, ...next };
     state.sourceRiskHistory = { ...state.sourceRiskHistory, ...sourceRiskNext };
+    state.sourceRiskFailures = sourceRiskFailures;
+    state.sourceRiskLoading = false;
     if (status) {
       status.textContent = failures.length === 0 ? `Recent ${state.trendWindow} trading days` : `Partial failure: ${failures.join(", ")}`;
     }
     renderTrendPanel();
     renderCagr();
+    renderSourceRiskRows();
   }
 
   function setTrendWindow(days) {
