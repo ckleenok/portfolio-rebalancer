@@ -374,6 +374,18 @@
     let latestRawRow = null;
 
     const sourceSnapshots = parseSourcePortfolioSnapshots(lines);
+    if (sourceSnapshots.length > 0) {
+      const latestSource = sourceSnapshots[sourceSnapshots.length - 1];
+      return {
+        date: latestSource.dateLabel,
+        SPY: latestSource.SPY,
+        QQQ: latestSource.QQQ,
+        SCHD: latestSource.SCHD,
+        GLD: latestSource.GLD,
+        recentCurrentTotals: sourceSnapshots.map((snapshot) => snapshot.invested).slice(-6),
+        sourceSnapshots,
+      };
+    }
 
     if (columns && Object.values(columns).every((index) => index >= 0)) {
       const totalsHistory = [];
