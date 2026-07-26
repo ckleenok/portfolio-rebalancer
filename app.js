@@ -750,27 +750,24 @@
       const response = await fetch(ACTUAL_TRADES_SYNC_URL, { cache: "no-store" });
       if (!response.ok) return;
       const payload = await response.json();
+      if (!payload || typeof payload.tickers !== "object") return;
       const tickers = payload?.tickers || {};
-      let changed = false;
       for (const ticker of ACTUAL_TRADE_TICKERS) {
-        if (Object.prototype.hasOwnProperty.call(tickers, ticker)) {
-          state.actualTrades[ticker] = Number(tickers[ticker]) || 0;
-          changed = true;
-        }
+        state.actualTrades[ticker] = Number(tickers[ticker]) || 0;
       }
-      if (changed) {
-        saveActualTrades();
-        render();
-      }
+      saveActualTrades();
+      await saveActualTradesToServer({ silent: true });
+      render();
     } catch {
       // keep whatever was already loaded
     }
   }
 
-  async function saveActualTradesToServer() {
+  async function saveActualTradesToServer(options = {}) {
+    const silent = options.silent === true;
     const status = document.getElementById("actualTradesSaveStatus");
     if (!ACTUAL_TRADES_URL) {
-      if (status) status.textContent = "로컬 환경에서는 브라우저에만 저장됩니다.";
+      if (status && !silent) status.textContent = "로컬 환경에서는 브라우저에만 저장됩니다.";
       return;
     }
     const payload = {
@@ -780,7 +777,7 @@
       updatedAt: new Date().toISOString(),
     };
     try {
-      if (status) status.textContent = "저장 중...";
+      if (status && !silent) status.textContent = "저장 중...";
       const response = await fetch(ACTUAL_TRADES_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -814,9 +811,9 @@
         }
       }
       const storage = String(responsePayload?.storage || "");
-      if (status) status.textContent = storage === "kv" ? "저장됨" : "저장됨 (현재 브라우저 위주)";
+      if (status && !silent) status.textContent = storage === "kv" ? "저장됨" : "저장됨 (현재 브라우저 위주)";
     } catch (error) {
-      if (status) status.textContent = `저장 실패: ${error.message}`;
+      if (status && !silent) status.textContent = `저장 실패: ${error.message}`;
     }
   }
 

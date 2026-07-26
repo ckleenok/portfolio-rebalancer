@@ -827,21 +827,43 @@ const SECURITY_TICKER_MAP = {
   "TIGER 미국배당다우존스": "SCHD",
 };
 
-function actualTradesSyncCutoffDate(now) {
-  const day = now.getUTCDate();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const cutoff = day >= 26 ? new Date(Date.UTC(year, month, 26)) : new Date(Date.UTC(year, month - 1, 26));
-  return cutoff.toISOString().slice(0, 10);
+const ACTUAL_TRADES_TIME_ZONE = process.env.ACTUAL_TRADES_TIME_ZONE || "Asia/Seoul";
+
+function actualTradesDateParts(now) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ACTUAL_TRADES_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    year: Number(byType.year),
+    month: Number(byType.month),
+    day: Number(byType.day),
+  };
+}
+
+function actualTradesDateText(year, month, day) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function actualTradesCycleBounds(now) {
+  const { year, month, day } = actualTradesDateParts(now);
+  const cutoff = day >= 26 ? new Date(Date.UTC(year, month - 1, 26)) : new Date(Date.UTC(year, month - 2, 26));
+  return {
+    from: cutoff.toISOString().slice(0, 10),
+    to: actualTradesDateText(year, month, day),
+  };
 }
 
 async function fetchActualTradesSync() {
-  const from = actualTradesSyncCutoffDate(new Date());
-  const to = new Date().toISOString().slice(0, 10);
+  const { from, to } = actualTradesCycleBounds(new Date());
 
   const url = new URL(`${TRANSACTION_RECORD_SUPABASE_URL}/rest/v1/trade_orders`);
   url.searchParams.set("select", "trade_date,security_name,side,status,quantity,unit_price");
-  url.searchParams.set("trade_date", `gte.${from}`);
+  url.searchParams.append("trade_date", `gte.${from}`);
+  url.searchParams.append("trade_date", `lte.${to}`);
   url.searchParams.set("status", "eq.completed");
 
   const supaResponse = await fetch(url, {
