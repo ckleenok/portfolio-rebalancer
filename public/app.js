@@ -682,6 +682,25 @@
     return Object.fromEntries(ACTUAL_TRADE_TICKERS.map((ticker) => [ticker, parseMoney(input?.[ticker] ?? 0)]));
   }
 
+  function formatKoreanDate(dateText) {
+    const match = String(dateText || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return "";
+    return `${Number(match[1])}. ${Number(match[2])}. ${Number(match[3])}.`;
+  }
+
+  function formatTradeSyncRange(from, to) {
+    const start = formatKoreanDate(from);
+    const end = formatKoreanDate(to);
+    if (!start && !end) return "";
+    if (!start || start === end) return end || start;
+    return `${start} ~ ${end}`;
+  }
+
+  function setActualTradesStatus(message) {
+    const status = document.getElementById("actualTradesSaveStatus");
+    if (status) status.textContent = message;
+  }
+
   function loadSavedActualTrades() {
     try {
       const currentYm = currentYearMonth();
@@ -750,6 +769,10 @@
       const response = await fetch(ACTUAL_TRADES_SYNC_URL, { cache: "no-store" });
       if (!response.ok) return;
       const payload = await response.json();
+      if (payload?.warning) {
+        setActualTradesStatus(`거래 내역 로딩 실패: ${payload.warning}`);
+        return;
+      }
       if (!payload || typeof payload.tickers !== "object") return;
       const tickers = payload?.tickers || {};
       for (const ticker of ACTUAL_TRADE_TICKERS) {
@@ -758,6 +781,8 @@
       saveActualTrades();
       await saveActualTradesToServer({ silent: true });
       render();
+      const range = formatTradeSyncRange(payload.from, payload.to);
+      setActualTradesStatus(`${range ? `${range} ` : ""}거래 내역 로딩 완료`);
     } catch {
       // keep whatever was already loaded
     }
